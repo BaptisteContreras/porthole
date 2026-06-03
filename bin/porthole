@@ -1,0 +1,13 @@
+#!/usr/bin/env php
+<?php
+
+require_once __DIR__.'/../vendor/autoload.php';
+
+use Porthole\Command\ReportCommand;
+use Symfony\Component\Console\Application;
+use Symfony\Component\HttpClient\HttpClient;
+
+$app = new Application('porthole', '0.1.0');
+$app->addCommand(new ReportCommand(HttpClient::create()));
+$app->setDefaultCommand('report', true);
+$app->run();
