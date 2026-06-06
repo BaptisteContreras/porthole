@@ -10,64 +10,73 @@ final class HarborApiClient
     private const string DATE_FORMAT = 'Y-m-d\TH:i:s.000\Z';
 
     public function __construct(
-        private readonly string $harborUrl,
-        private readonly string $token,
         private readonly HttpClientInterface $httpClient,
-        private readonly ?string $username = null,
     ) {
     }
 
     /**
-     * @return AuditLogEntry[]
+     * Streams audit log entries page by page.
+     * The generator key is the 1-based page number.
+     *
+     * @return \Generator<int, list<AuditLogEntry>>
      */
-    public function fetchAuditLogs(
+    public function streamAuditLogs(
+        HarborContext $context,
         ?\DateTimeImmutable $from = null,
         ?\DateTimeImmutable $to = null,
-        ?callable $onPageFetched = null,
-    ): array {
-        $entries = [];
-        $page = 0;
-        $query = ['page' => 1, 'page_size' => self::PAGE_SIZE];
+    ): \Generator {
+        $httpClient = $context->verifySsl
+            ? $this->httpClient
+            : $this->httpClient->withOptions(['verify_peer' => false, 'verify_host' => false]);
 
+        $filterQuery = null;
         if (null !== $from || null !== $to) {
-            $query['q'] = sprintf('op_time=[%s~%s]', $from?->format(self::DATE_FORMAT) ?? '', $to?->format(self::DATE_FORMAT) ?? '');
+            $filterQuery = sprintf(
+                'op_time=[%s~%s]',
+                $from?->format(self::DATE_FORMAT) ?? '',
+                $to?->format(self::DATE_FORMAT) ?? '',
+            );
         }
 
-        $url = sprintf('%s/api/v2.0/audit-logs', $this->harborUrl);
+        $page = 1;
+        $query = ['page' => $page, 'page_size' => self::PAGE_SIZE];
+        if (null !== $filterQuery) {
+            $query['q'] = $filterQuery;
+        }
+
+        $url = sprintf('%s/api/v2.0/audit-logs', $context->url);
 
         do {
-            $response = $this->httpClient->request('GET', $url, [
-                'headers' => ['Authorization' => $this->buildAuthorizationHeader()],
+            $response = $httpClient->request('GET', $url, [
+                'headers' => ['Authorization' => $this->buildAuthorizationHeader($context)],
                 'query' => $query,
             ]);
 
             /** @var list<array{username: string, resource: string, resource_type: string, operation: string, op_time: string}> $data */
             $data = $response->toArray();
 
-            foreach ($data as $item) {
-                $entries[] = AuditLogBuilder::buildFromApiResponseItem($item);
-            }
+            yield $page => array_map(
+                [AuditLogBuilder::class, 'buildFromApiResponseItem'],
+                $data,
+            );
 
             ++$page;
-            if (null !== $onPageFetched) {
-                ($onPageFetched)($page);
-            }
-
             $nextPath = $this->extractNextLink($response->getHeaders()['link'][0] ?? null);
-            $url = null !== $nextPath ? sprintf('%s%s', $this->harborUrl, $nextPath) : null;
+            $url = null !== $nextPath ? sprintf('%s%s', $context->url, $nextPath) : null;
             $query = [];
+            if (null !== $filterQuery) {
+                $query['q'] = $filterQuery;
+            }
         } while (null !== $url);
-
-        return $entries;
     }
 
-    private function buildAuthorizationHeader(): string
+    private function buildAuthorizationHeader(HarborContext $context): string
     {
-        if (null !== $this->username) {
-            return sprintf('Basic %s', base64_encode(sprintf('%s:%s', $this->username, $this->token)));
+        if (null !== $context->username) {
+            return sprintf('Basic %s', base64_encode(sprintf('%s:%s', $context->username, $context->token)));
         }
 
-        return sprintf('Bearer %s', $this->token);
+        return sprintf('Bearer %s', $context->token);
     }
 
     private function extractNextLink(?string $linkHeader): ?string

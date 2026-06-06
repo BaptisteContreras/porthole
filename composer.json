@@ -6,6 +6,7 @@
     "require": {
         "php": "^8.5",
         "symfony/console": "^8.1",
+        "symfony/event-dispatcher": "^8.1",
         "symfony/http-client": "^8.1",
         "symfony/tui": "^8.1"
     },

@@ -4,10 +4,20 @@
 require_once __DIR__.'/../vendor/autoload.php';
 
 use Porthole\Command\ReportCommand;
+use Porthole\Harbor\HarborApiClient;
+use Porthole\Report\ReportBuilder;
+use Porthole\Result\CsvWriter;
+use Porthole\UseCase\GenerateReportHandler;
 use Symfony\Component\Console\Application;
 use Symfony\Component\HttpClient\HttpClient;
 
 $app = new Application('porthole', '0.1.0');
-$app->addCommand(new ReportCommand(HttpClient::create()));
+$app->addCommand(new ReportCommand(
+    new GenerateReportHandler(
+        new HarborApiClient(HttpClient::create()),
+        new ReportBuilder(),
+        new CsvWriter(),
+    )
+));
 $app->setDefaultCommand('report', true);
 $app->run();

@@ -2,18 +2,18 @@
 
 namespace Porthole\Command;
 
-use Porthole\Harbor\HarborApiClient;
-use Porthole\Report\ImageReport;
-use Porthole\Report\ImageReportRow;
-use Porthole\Report\ReportBuilder;
-use Porthole\Report\UserReport;
-use Porthole\Report\UserReportRow;
-use Porthole\Result\CsvWriter;
+use Porthole\Event\AuditLogPageFetchedEvent;
+use Porthole\Event\AuditLogsFetchedEvent;
+use Porthole\Event\CsvWrittenEvent;
+use Porthole\Event\ReportBuiltEvent;
+use Porthole\UseCase\GenerateReportCommand as GenerateReportUseCase;
+use Porthole\UseCase\GenerateReportHandler;
 use Revolt\EventLoop;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Tui\Event\CancelEvent;
 use Symfony\Component\Tui\Event\InputEvent;
 use Symfony\Component\Tui\Input\Key;
@@ -27,12 +27,11 @@ use Symfony\Component\Tui\Tui;
 use Symfony\Component\Tui\Widget\ContainerWidget;
 use Symfony\Component\Tui\Widget\InputWidget;
 use Symfony\Component\Tui\Widget\TextWidget;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class ReportCommand extends Command
 {
     public function __construct(
-        private readonly HttpClientInterface $httpClient,
+        private readonly GenerateReportHandler $handler,
         private readonly bool $interactive = true,
     ) {
         parent::__construct();
@@ -81,10 +80,6 @@ final class ReportCommand extends Command
         $fromOption = $input->getOption('from');
         $toOption = $input->getOption('to');
 
-        $httpClient = $input->getOption('no-verify-ssl')
-            ? $this->httpClient->withOptions(['verify_peer' => false, 'verify_host' => false])
-            : $this->httpClient;
-
         try {
             $from = is_string($fromOption) ? new \DateTimeImmutable($fromOption) : null;
             $to = is_string($toOption) ? new \DateTimeImmutable($toOption) : null;
@@ -94,6 +89,8 @@ final class ReportCommand extends Command
             return Command::FAILURE;
         }
 
+        $verifySsl = !$input->getOption('no-verify-ssl');
+
         if (!$this->interactive) {
             if (null === $harborUrl || null === $outputPath) {
                 $output->writeln('<error>--harbor-url and --output are required in non-interactive mode.</error>');
@@ -101,9 +98,19 @@ final class ReportCommand extends Command
                 return Command::FAILURE;
             }
             try {
-                $entries = $this->fetchEntries($harborUrl, $token, $from, $to, null, $httpClient, $username);
-                [$header, $csvRows] = $this->buildCsvData($entries, $mode);
-                $this->writeCsv($outputPath, $header, $csvRows);
+                $this->handler->handle(
+                    new GenerateReportUseCase(
+                        harborUrl: $harborUrl,
+                        token: $token,
+                        username: $username,
+                        mode: $mode,
+                        from: $from,
+                        to: $to,
+                        outputPath: $outputPath,
+                        verifySsl: $verifySsl,
+                    ),
+                    new EventDispatcher(),
+                );
             } catch (\Throwable $e) {
                 $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
 
@@ -120,7 +127,16 @@ final class ReportCommand extends Command
             }
         }
 
-        return $this->runTuiPhase($harborUrl, $token, $outputPath, $mode, $from, $to, $httpClient, $username);
+        return $this->runTuiPhase(new GenerateReportUseCase(
+            harborUrl: $harborUrl,
+            token: $token,
+            username: $username,
+            mode: $mode,
+            from: $from,
+            to: $to,
+            outputPath: $outputPath,
+            verifySsl: $verifySsl,
+        ));
     }
 
     /**
@@ -236,16 +252,8 @@ final class ReportCommand extends Command
         return [$harborUrl, $outputPath];
     }
 
-    private function runTuiPhase(
-        string $harborUrl,
-        string $token,
-        string $outputPath,
-        string $mode,
-        ?\DateTimeImmutable $from,
-        ?\DateTimeImmutable $to,
-        HttpClientInterface $httpClient,
-        ?string $username,
-    ): int {
+    private function runTuiPhase(GenerateReportUseCase $command): int
+    {
         $steps = [
             'connect' => new TextWidget('[ ] Connecting to Harbor'),
             'fetch' => new TextWidget('[ ] Fetching audit log'),
@@ -287,110 +295,82 @@ final class ReportCommand extends Command
             $tui->stop();
         });
 
-        // Phase 1: Connect (marks active, then defers the actual fetch)
+        $connectedMarked = false;
+        $capturedOutputPath = null;
+        $capturedRowCount = null;
+
+        $dispatcher = new EventDispatcher();
+
+        $dispatcher->addListener(
+            AuditLogPageFetchedEvent::class,
+            function (AuditLogPageFetchedEvent $e) use ($steps, &$connectedMarked) {
+                if (!$connectedMarked) {
+                    $connectedMarked = true;
+                    $steps['connect']->setText('[✓] Connected to Harbor');
+                }
+                $steps['fetch']->setText(sprintf('[⟳] Fetching audit log (page %d)', $e->page));
+            }
+        );
+        $dispatcher->addListener(
+            AuditLogsFetchedEvent::class,
+            fn (AuditLogsFetchedEvent $e) => $steps['fetch']->setText(
+                sprintf('[✓] Fetched audit log (%d entries)', $e->totalEntries)
+            )
+        );
+        $dispatcher->addListener(
+            ReportBuiltEvent::class,
+            fn () => $steps['build']->setText('[✓] Built report')
+        );
+        $dispatcher->addListener(
+            CsvWrittenEvent::class,
+            function (CsvWrittenEvent $e) use ($steps, &$capturedOutputPath, &$capturedRowCount) {
+                $steps['write']->setText('[✓] Written CSV');
+                $capturedOutputPath = $e->outputPath;
+                $capturedRowCount = $e->rowCount;
+            }
+        );
+
         EventLoop::defer(function () use (
-            $steps, $harborUrl, $token, $outputPath, $mode, $from, $to, $httpClient, $username,
-            $mainContainer, $tui, $startTime, &$exitCode, &$completed
+            $steps, $command, $dispatcher,
+            $mainContainer, $tui, $startTime,
+            &$capturedOutputPath, &$capturedRowCount,
+            &$exitCode, &$completed
         ) {
             $steps['connect']->setText('[⟳] Connecting to Harbor');
 
-            // Phase 2: Fetch
-            EventLoop::defer(function () use (
-                $steps, $harborUrl, $token, $outputPath, $mode, $from, $to, $httpClient, $username,
-                $mainContainer, $tui, $startTime, &$exitCode, &$completed
-            ) {
-                try {
-                    $page = 0;
-                    $connectedMarked = false;
+            try {
+                $this->handler->handle($command, $dispatcher);
 
-                    $entries = $this->fetchEntries(
-                        $harborUrl,
-                        $token,
-                        $from,
-                        $to,
-                        function (int $p) use ($steps, &$page, &$connectedMarked) {
-                            if (!$connectedMarked) {
-                                $connectedMarked = true;
-                                $steps['connect']->setText('[✓] Connected to Harbor');
-                            }
-                            $page = $p;
-                            $steps['fetch']->setText(sprintf('[⟳] Fetching audit log (page %d)', $p));
-                        },
-                        $httpClient,
-                        $username,
-                    );
+                EventLoop::defer(function () use (
+                    &$capturedOutputPath, &$capturedRowCount, $startTime,
+                    $mainContainer, $tui, &$completed
+                ) {
+                    $elapsed = round(microtime(true) - $startTime, 1);
 
-                    if (!$connectedMarked) {
-                        $steps['connect']->setText('[✓] Connected to Harbor');
-                    }
-                    $steps['fetch']->setText(sprintf('[✓] Fetched audit log (%d entries)', count($entries)));
+                    $summary = new ContainerWidget();
+                    $summary->setStyle(new Style(direction: Direction::Vertical, gap: 0));
+                    $summary->addStyleClass('summary');
+                    $summary->add(new TextWidget(sprintf('Output  %s', $capturedOutputPath)));
+                    $summary->add(new TextWidget(sprintf('Rows    %s', number_format((int) $capturedRowCount, 0, '.', ' '))));
+                    $summary->add(new TextWidget(sprintf('Time    %ss', $elapsed)));
+                    $summary->add(new TextWidget(''));
+                    $summary->add(new TextWidget('Press Enter or Ctrl+C to exit'));
+                    $mainContainer->add($summary);
 
-                    // Phase 3: Build
-                    EventLoop::defer(function () use (
-                        $steps, $entries, $outputPath, $mode,
-                        $mainContainer, $tui, $startTime, &$exitCode, &$completed
-                    ) {
-                        $steps['build']->setText('[⟳] Building report');
+                    $completed = true;
 
-                        try {
-                            [$header, $csvRows] = $this->buildCsvData($entries, $mode);
-                            $steps['build']->setText('[✓] Built report');
-
-                            // Phase 4: Write
-                            EventLoop::defer(function () use (
-                                $steps, $header, $csvRows, $outputPath,
-                                $mainContainer, $tui, $startTime, &$exitCode, &$completed
-                            ) {
-                                $steps['write']->setText('[⟳] Writing CSV');
-
-                                try {
-                                    $rowCount = $this->writeCsv($outputPath, $header, $csvRows);
-                                    $steps['write']->setText('[✓] Written CSV');
-
-                                    // Phase 5: Summary
-                                    EventLoop::defer(function () use (
-                                        $outputPath, $rowCount, $startTime,
-                                        $mainContainer, $tui, &$completed
-                                    ) {
-                                        $elapsed = round(microtime(true) - $startTime, 1);
-
-                                        $summary = new ContainerWidget();
-                                        $summary->setStyle(new Style(direction: Direction::Vertical, gap: 0));
-                                        $summary->addStyleClass('summary');
-                                        $summary->add(new TextWidget(sprintf('Output  %s', $outputPath)));
-                                        $summary->add(new TextWidget(sprintf('Rows    %s', number_format($rowCount, 0, '.', ' '))));
-                                        $summary->add(new TextWidget(sprintf('Time    %ss', $elapsed)));
-                                        $summary->add(new TextWidget(''));
-                                        $summary->add(new TextWidget('Press Enter or Ctrl+C to exit'));
-                                        $mainContainer->add($summary);
-
-                                        $completed = true;
-
-                                        $this->addExitListener($tui);
-                                    });
-                                } catch (\Throwable $e) {
-                                    $steps['write']->setText(sprintf('[✗] Writing CSV — %s', $e->getMessage()));
-                                    $exitCode = Command::FAILURE;
-                                    $this->showErrorSummary($mainContainer, $tui, $e->getMessage(), $completed);
-                                }
-                            });
-                        } catch (\Throwable $e) {
-                            $steps['build']->setText(sprintf('[✗] Building report — %s', $e->getMessage()));
-                            $exitCode = Command::FAILURE;
-                            $this->showErrorSummary($mainContainer, $tui, $e->getMessage(), $completed);
-                        }
-                    });
-                } catch (\Throwable $e) {
-                    if (str_contains((string) $e->getMessage(), '401') || str_contains((string) $e->getMessage(), 'auth')) {
-                        $steps['connect']->setText(sprintf('[✗] Connecting to Harbor — %s', $e->getMessage()));
-                    } else {
-                        $steps['fetch']->setText(sprintf('[✗] Fetching audit log — %s', $e->getMessage()));
-                        $steps['connect']->setText('[✓] Connected to Harbor');
-                    }
-                    $exitCode = Command::FAILURE;
-                    $this->showErrorSummary($mainContainer, $tui, $e->getMessage(), $completed);
+                    $this->addExitListener($tui);
+                });
+            } catch (\Throwable $e) {
+                if (str_contains((string) $e->getMessage(), '401') || str_contains((string) $e->getMessage(), 'auth')) {
+                    $steps['connect']->setText(sprintf('[✗] Connecting to Harbor — %s', $e->getMessage()));
+                } else {
+                    $steps['fetch']->setText(sprintf('[✗] Fetching audit log — %s', $e->getMessage()));
+                    $steps['connect']->setText('[✓] Connected to Harbor');
                 }
-            });
+                $exitCode = Command::FAILURE;
+                $this->showErrorSummary($mainContainer, $tui, $e->getMessage(), $completed);
+            }
         });
 
         $tui->run();
@@ -411,62 +391,6 @@ final class ReportCommand extends Command
         $completed = true;
 
         $this->addExitListener($tui);
-    }
-
-    /**
-     * @return \Porthole\Harbor\AuditLogEntry[]
-     */
-    private function fetchEntries(
-        string $harborUrl,
-        string $token,
-        ?\DateTimeImmutable $from,
-        ?\DateTimeImmutable $to,
-        ?callable $onPageFetched = null,
-        ?HttpClientInterface $httpClient = null,
-        ?string $username = null,
-    ): array {
-        return (new HarborApiClient($harborUrl, $token, $httpClient ?? $this->httpClient, $username))
-            ->fetchAuditLogs($from, $to, $onPageFetched);
-    }
-
-    /**
-     * @param \Porthole\Harbor\AuditLogEntry[] $entries
-     *
-     * @return array{list<string>, list<list<int|string>>}
-     */
-    private function buildCsvData(array $entries, string $mode): array
-    {
-        $builder = new ReportBuilder();
-
-        if ('users' === $mode) {
-            $report = $builder->buildUsersReport($entries);
-            $rows = $report->rows;
-            usort($rows, fn (UserReportRow $a, UserReportRow $b) => $a->username <=> $b->username ?: $b->pullCount <=> $a->pullCount
-            );
-
-            return [
-                ['User', 'Image', 'Tag', 'Number of pulls'],
-                array_map(fn (UserReportRow $r) => [$r->username, $r->image, $r->tag, $r->pullCount], $rows),
-            ];
-        }
-
-        $report = $builder->buildImagesReport($entries);
-        $rows = $report->rows;
-        usort($rows, fn (ImageReportRow $a, ImageReportRow $b) => $b->pullCount <=> $a->pullCount);
-
-        return [
-            ['Image', 'Tag', 'Number of pulls'],
-            array_map(fn (ImageReportRow $r) => [$r->image, $r->tag, $r->pullCount], $rows),
-        ];
-    }
-
-    /**
-     * @param list<string>           $header
-     * @param list<list<int|string>> $csvRows
-     */
-    private function writeCsv(string $outputPath, array $header, array $csvRows): int
-    {
-        return (new CsvWriter())->write($outputPath, $header, $csvRows);
     }
 
     private function addExitListener(Tui $tui): void

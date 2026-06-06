@@ -4,6 +4,10 @@ namespace Porthole\Tests\Command;
 
 use PHPUnit\Framework\TestCase;
 use Porthole\Command\ReportCommand;
+use Porthole\Harbor\HarborApiClient;
+use Porthole\Report\ReportBuilder;
+use Porthole\Result\CsvWriter;
+use Porthole\UseCase\GenerateReportHandler;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\HttpClient\MockHttpClient;
@@ -18,7 +22,7 @@ class ReportCommandTest extends TestCase
     {
         $this->outputFile = (string) tempnam(sys_get_temp_dir(), 'porthole_report_');
         $this->originalToken = getenv('HARBOR_TOKEN');
-        putenv('HARBOR_TOKEN'); // unset so tests are deterministic
+        putenv('HARBOR_TOKEN');
     }
 
     protected function tearDown(): void
@@ -31,6 +35,18 @@ class ReportCommandTest extends TestCase
         }
     }
 
+    private function makeCommand(MockHttpClient $httpClient): ReportCommand
+    {
+        return new ReportCommand(
+            new GenerateReportHandler(
+                new HarborApiClient($httpClient),
+                new ReportBuilder(),
+                new CsvWriter(),
+            ),
+            interactive: false,
+        );
+    }
+
     public function testRunsImagesReportSortedByPullsDesc(): void
     {
         $body = json_encode([
@@ -38,9 +54,9 @@ class ReportCommandTest extends TestCase
             ['username' => 'alice', 'resource' => 'library/nginx:latest', 'resource_type' => 'artifact', 'operation' => 'pull', 'op_time' => '2025-06-02T10:00:00.000Z'],
             ['username' => 'bob',   'resource' => 'library/redis:7',      'resource_type' => 'artifact', 'operation' => 'pull', 'op_time' => '2025-06-03T11:00:00.000Z'],
         ]);
+        assert(is_string($body));
 
-        $command = new ReportCommand(new MockHttpClient([new MockResponse($body)]), interactive: false);
-        $tester = new CommandTester($command);
+        $tester = new CommandTester($this->makeCommand(new MockHttpClient([new MockResponse($body)])));
 
         $exitCode = $tester->execute([
             '--harbor-url' => 'https://registry.example.com',
@@ -52,7 +68,7 @@ class ReportCommandTest extends TestCase
         $lines = file($this->outputFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         $this->assertIsArray($lines);
         $this->assertSame('Image;Tag;"Number of pulls"', $lines[0]);
-        $this->assertSame('library/nginx;latest;2', $lines[1]); // highest pulls first
+        $this->assertSame('library/nginx;latest;2', $lines[1]);
         $this->assertSame('library/redis;7;1', $lines[2]);
     }
 
@@ -63,9 +79,9 @@ class ReportCommandTest extends TestCase
             ['username' => 'alice',   'resource' => 'library/redis:7',      'resource_type' => 'artifact', 'operation' => 'pull', 'op_time' => '2025-06-02T10:00:00.000Z'],
             ['username' => 'alice',   'resource' => 'library/redis:7',      'resource_type' => 'artifact', 'operation' => 'pull', 'op_time' => '2025-06-03T10:00:00.000Z'],
         ]);
+        assert(is_string($body));
 
-        $command = new ReportCommand(new MockHttpClient([new MockResponse($body)]), interactive: false);
-        $tester = new CommandTester($command);
+        $tester = new CommandTester($this->makeCommand(new MockHttpClient([new MockResponse($body)])));
 
         $exitCode = $tester->execute([
             '--harbor-url' => 'https://registry.example.com',
@@ -78,14 +94,13 @@ class ReportCommandTest extends TestCase
         $lines = file($this->outputFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         $this->assertIsArray($lines);
         $this->assertSame('User;Image;Tag;"Number of pulls"', $lines[0]);
-        $this->assertSame('alice;library/redis;7;2', $lines[1]);   // alice < charlie
+        $this->assertSame('alice;library/redis;7;2', $lines[1]);
         $this->assertSame('charlie;library/nginx;latest;1', $lines[2]);
     }
 
     public function testFailsWhenHarborTokenIsMissing(): void
     {
-        $command = new ReportCommand(new MockHttpClient(), interactive: false);
-        $tester = new CommandTester($command);
+        $tester = new CommandTester($this->makeCommand(new MockHttpClient()));
 
         $exitCode = $tester->execute([
             '--harbor-url' => 'https://registry.example.com',
@@ -98,8 +113,7 @@ class ReportCommandTest extends TestCase
 
     public function testFailsOnInvalidMode(): void
     {
-        $command = new ReportCommand(new MockHttpClient(), interactive: false);
-        $tester = new CommandTester($command);
+        $tester = new CommandTester($this->makeCommand(new MockHttpClient()));
 
         $exitCode = $tester->execute([
             '--harbor-url' => 'https://registry.example.com',
@@ -114,8 +128,7 @@ class ReportCommandTest extends TestCase
 
     public function testFailsOnInvalidFromDate(): void
     {
-        $command = new ReportCommand(new MockHttpClient(), interactive: false);
-        $tester = new CommandTester($command);
+        $tester = new CommandTester($this->makeCommand(new MockHttpClient()));
 
         $exitCode = $tester->execute([
             '--harbor-url' => 'https://registry.example.com',

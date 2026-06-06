@@ -7,18 +7,25 @@ use Porthole\Command\ReportCommand;
 use Porthole\Harbor\HarborApiClient;
 use Porthole\Report\ReportBuilder;
 use Porthole\Result\CsvWriter;
+use Porthole\UseCase\GenerateReportHandler;
 use Symfony\Component\HttpClient\MockHttpClient;
 
 class AutoloadTest extends TestCase
 {
     public function testReportCommandIsInstantiable(): void
     {
-        $this->assertInstanceOf(ReportCommand::class, new ReportCommand(new MockHttpClient()));
+        $this->assertInstanceOf(ReportCommand::class, new ReportCommand(
+            new GenerateReportHandler(
+                new HarborApiClient(new MockHttpClient()),
+                new ReportBuilder(),
+                new CsvWriter(),
+            )
+        ));
     }
 
     public function testHarborApiClientIsInstantiable(): void
     {
-        $this->assertInstanceOf(HarborApiClient::class, new HarborApiClient('https://registry.example.com', 'token', new MockHttpClient()));
+        $this->assertInstanceOf(HarborApiClient::class, new HarborApiClient(new MockHttpClient()));
     }
 
     public function testReportBuilderIsInstantiable(): void
