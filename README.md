@@ -23,7 +23,7 @@ docker run --rm -v $(pwd):/app porthole-dev /usr/bin/composer install
 ## Usage
 
 ```
-bin/porthole report [options]
+bin/porthole [options]
 ```
 
 | Option | Description |
@@ -56,21 +56,13 @@ export HARBOR_TOKEN=your-token
 
 ```bash
 # Images report — all time
-bin/porthole report \
-  --harbor-url=https://registry.example.com \
-  --output=report.csv
+bin/porthole --harbor-url=https://registry.example.com --output=report.csv
 
 # Images report — filtered by date range
-bin/porthole report \
-  --harbor-url=https://registry.example.com \
-  --from=2025-01-01 --to=2025-06-30 \
-  --output=report.csv
+bin/porthole --harbor-url=https://registry.example.com --from=2025-01-01 --to=2025-06-30 --output=report.csv
 
 # Users report
-bin/porthole report \
-  --harbor-url=https://registry.example.com \
-  --mode=users \
-  --output=report.csv
+bin/porthole --harbor-url=https://registry.example.com --mode=users --output=report.csv
 ```
 
 ## Output format

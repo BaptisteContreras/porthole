@@ -1,0 +1,9 @@
+HARBOR_URL=https://registry.example.com
+HARBOR_TOKEN=your-token-here
+HARBOR_USERNAME=robot$myaccount  # only needed for Basic auth
+
+# Optional filters
+# FROM=2025-01-01
+# TO=2025-06-30
+# MODE=users
+# OUTPUT=report.csv

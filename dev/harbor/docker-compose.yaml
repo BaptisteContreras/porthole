@@ -3,6 +3,7 @@ services:
     image: goharbor/registry-photon:v2.12.0
     container_name: harbor-registry
     restart: always
+    user: "0:0"
     volumes:
       - registry_data:/storage:z
       - ./common/config/registry/:/etc/registry/:z
@@ -16,6 +17,7 @@ services:
     image: goharbor/harbor-registryctl:v2.12.0
     container_name: harbor-registryctl
     restart: always
+    user: "0:0"
     env_file:
       - ./common/config/registryctl/env
     volumes:
