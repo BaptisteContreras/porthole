@@ -55,8 +55,11 @@ check: cs stan test
 report:
 	set -a && . ./.test.local && set +a && \
 	docker run -it --rm -v $(CURDIR):/app \
+	  --add-host harbor.local:host-gateway \
 	  -e HARBOR_TOKEN \
 	  -e HARBOR_USERNAME \
 	  porthole-dev bin/porthole \
+	  --no-verify-ssl \
+	  $$([ -n "$${HARBOR_URL}" ] && echo "--harbor-url=$${HARBOR_URL}") \
 	  $$([ -n "$${FROM}" ] && echo "--from=$${FROM}") \
 	  $$([ -n "$${TO}" ] && echo "--to=$${TO}")

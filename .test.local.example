@@ -1,6 +1,6 @@
-HARBOR_URL=https://registry.example.com
+HARBOR_URL=https://harbor.local  # local dev stack; use your registry URL for production
 HARBOR_TOKEN=your-token-here
-HARBOR_USERNAME=robot$myaccount  # only needed for Basic auth
+HARBOR_USERNAME='robot$myaccount'  # only needed for Basic auth; single quotes prevent $-expansion
 
 # Optional filters
 # FROM=2025-01-01
