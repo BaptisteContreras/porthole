@@ -20,6 +20,7 @@ final class CredentialsPage implements PageInterface
 {
     public function __construct(
         private readonly GenerateReportHandler $handler,
+        private readonly ?HarborContext $context = null,
     ) {
     }
 
@@ -29,15 +30,15 @@ final class CredentialsPage implements PageInterface
         $title->addStyleClass('font-big text-cyan-400 bold');
 
         $urlInput = new InputWidget();
-        $urlInput->setValue(getenv('HARBOR_URL') ?: 'https://');
+        $urlInput->setValue(null !== $this->context ? $this->context->url : (getenv('HARBOR_URL') ?: 'https://'));
         $urlInput->addStyleClass('input');
 
         $tokenInput = new InputWidget();
-        $tokenInput->setValue(getenv('HARBOR_TOKEN') ?: '');
+        $tokenInput->setValue(null !== $this->context ? $this->context->token : (getenv('HARBOR_TOKEN') ?: ''));
         $tokenInput->addStyleClass('input');
 
         $usernameInput = new InputWidget();
-        $usernameInput->setValue(getenv('HARBOR_USERNAME') ?: '');
+        $usernameInput->setValue(null !== $this->context ? ($this->context->username ?? '') : (getenv('HARBOR_USERNAME') ?: ''));
         $usernameInput->addStyleClass('input');
 
         $sslWidget = new SelectListWidget(
@@ -48,7 +49,31 @@ final class CredentialsPage implements PageInterface
             maxVisible: 2,
         );
 
-        $hint = new TextWidget('Press Enter to confirm, Ctrl+C to exit');
+        // SSL: if context provided, use its verifySsl; else default to true (index 0 = Yes)
+        if (null !== $this->context && !$this->context->verifySsl) {
+            $sslWidget->setSelectedIndex(1);
+        }
+
+        /** @var bool $tokenVisible */
+        $tokenVisible = false;
+
+        $tokenContainer = new ContainerWidget();
+
+        $refreshTokenDisplay = static function () use ($tokenContainer, $tokenInput, &$tokenVisible): void {
+            $tokenContainer->clear();
+            if ($tokenVisible) {
+                $tokenContainer->add($tokenInput);
+            } else {
+                $value = $tokenInput->getValue();
+                $maskWidget = new TextWidget('' !== $value ? str_repeat('●', mb_strlen($value)) : '(empty)');
+                $maskWidget->addStyleClass('input');
+                $tokenContainer->add($maskWidget);
+            }
+        };
+
+        $refreshTokenDisplay();
+
+        $hint = new TextWidget('Tab: next field  Ctrl+H: show/hide token  Enter: confirm  Ctrl+C: exit');
         $hint->addStyleClass('hint');
 
         $container = new ContainerWidget();
@@ -58,7 +83,7 @@ final class CredentialsPage implements PageInterface
         $container->add(new TextWidget('Harbor URL'));
         $container->add($urlInput);
         $container->add(new TextWidget('Token'));
-        $container->add($tokenInput);
+        $container->add($tokenContainer);
         $container->add(new TextWidget('Username (optional)'));
         $container->add($usernameInput);
         $container->add(new TextWidget('Verify SSL'));
@@ -69,6 +94,7 @@ final class CredentialsPage implements PageInterface
             'submit' => ['enter'],
             'next' => [Key::TAB],
             'previous' => ['shift+tab'],
+            'toggle_token' => ['ctrl+h'],
         ]);
 
         $navigator->listen(function (InputEvent $event) use (
@@ -79,8 +105,18 @@ final class CredentialsPage implements PageInterface
             $tokenInput,
             $usernameInput,
             $sslWidget,
+            $refreshTokenDisplay,
+            &$tokenVisible,
         ): void {
             $data = $event->getData();
+
+            if ($keybindings->matches($data, 'toggle_token')) {
+                $tokenVisible = !$tokenVisible;
+                $refreshTokenDisplay();
+                $event->stopPropagation();
+
+                return;
+            }
 
             if ($keybindings->matches($data, 'next')) {
                 $navigator->getTui()->getFocusManager()->focusNext();

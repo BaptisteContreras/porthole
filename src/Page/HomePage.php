@@ -33,8 +33,9 @@ final class HomePage implements PageInterface
             items: [
                 ['value' => 'build_report', 'label' => 'Build report', 'description' => 'generate a CSV pull activity report'],
                 ['value' => 'view_report', 'label' => 'View report', 'description' => 'coming soon'],
+                ['value' => 'credentials', 'label' => 'Change credentials', 'description' => 'update Harbor connection settings'],
             ],
-            maxVisible: 2,
+            maxVisible: 3,
         );
 
         $menuWidget->onSelect(function (SelectEvent $event) use ($navigator, $menuWidget, $hint): void {
@@ -45,6 +46,12 @@ final class HomePage implements PageInterface
 
             if ('build_report' === $item['value']) {
                 $navigator->navigateTo(new BuildReportPage($this->context, $this->handler));
+
+                return;
+            }
+
+            if ('credentials' === $item['value']) {
+                $navigator->navigateTo(new CredentialsPage($this->handler, $this->context));
 
                 return;
             }
