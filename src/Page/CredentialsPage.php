@@ -54,24 +54,11 @@ final class CredentialsPage implements PageInterface
             $sslWidget->setSelectedIndex(1);
         }
 
-        /** @var bool $tokenVisible */
-        $tokenVisible = false;
+        $tokenValue = $tokenInput->getValue();
+        $maskWidget = new TextWidget('' !== $tokenValue ? str_repeat('●', mb_strlen($tokenValue)) : '(empty)');
+        $maskWidget->addStyleClass('input');
 
-        $tokenContainer = new ContainerWidget();
-
-        $refreshTokenDisplay = static function () use ($tokenContainer, $tokenInput, &$tokenVisible): void {
-            $tokenContainer->clear();
-            if ($tokenVisible) {
-                $tokenContainer->add($tokenInput);
-            } else {
-                $value = $tokenInput->getValue();
-                $maskWidget = new TextWidget('' !== $value ? str_repeat('●', mb_strlen($value)) : '(empty)');
-                $maskWidget->addStyleClass('input');
-                $tokenContainer->add($maskWidget);
-            }
-        };
-
-        $refreshTokenDisplay();
+        $tokenInput->setStyle(new Style(hidden: true));
 
         $hint = new TextWidget('Tab: next field  Ctrl+H: show/hide token  Enter: confirm  Ctrl+C: exit');
         $hint->addStyleClass('hint');
@@ -83,7 +70,8 @@ final class CredentialsPage implements PageInterface
         $container->add(new TextWidget('Harbor URL'));
         $container->add($urlInput);
         $container->add(new TextWidget('Token'));
-        $container->add($tokenContainer);
+        $container->add($maskWidget);
+        $container->add($tokenInput);
         $container->add(new TextWidget('Username (optional)'));
         $container->add($usernameInput);
         $container->add(new TextWidget('Verify SSL'));
@@ -97,37 +85,44 @@ final class CredentialsPage implements PageInterface
             'toggle_token' => ['ctrl+h'],
         ]);
 
+        $tokenVisible = false;
+
         $navigator->listen(function (InputEvent $event) use (
             $keybindings,
             $navigator,
             $hint,
             $urlInput,
             $tokenInput,
+            $maskWidget,
             $usernameInput,
             $sslWidget,
-            $refreshTokenDisplay,
             &$tokenVisible,
         ): void {
             $data = $event->getData();
 
             if ($keybindings->matches($data, 'toggle_token')) {
                 $tokenVisible = !$tokenVisible;
-                $refreshTokenDisplay();
-
+                if (!$tokenVisible) {
+                    $value = $tokenInput->getValue();
+                    $maskWidget->setText('' !== $value ? str_repeat('●', mb_strlen($value)) : '(empty)');
+                }
+                $tokenInput->setStyle(new Style(hidden: $tokenVisible ? null : true));
+                $maskWidget->setStyle(new Style(hidden: $tokenVisible ? true : null));
+                $navigator->requestPageRender(true);
                 $event->stopPropagation();
 
                 return;
             }
 
             if ($keybindings->matches($data, 'next')) {
-                $navigator->getTui()->getFocusManager()->focusNext();
+                $navigator->focusNextVisibleWidget();
                 $event->stopPropagation();
 
                 return;
             }
 
             if ($keybindings->matches($data, 'previous')) {
-                $navigator->getTui()->getFocusManager()->focusPrevious();
+                $navigator->focusPreviousVisibleWidget();
                 $event->stopPropagation();
 
                 return;

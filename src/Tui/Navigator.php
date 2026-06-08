@@ -39,6 +39,37 @@ final class Navigator
         return $this->tui;
     }
 
+    public function focusNextVisibleWidget(): void
+    {
+        $this->tui->getFocusManager()->focusNext();
+        if($this->tui->getFocusManager()->getFocus()?->getStyle()?->getHidden()) {
+            $this->tui->getFocusManager()->focusNext();
+        }
+    }
+
+    public function focusPreviousVisibleWidget(): void
+    {
+        $this->tui->getFocusManager()->focusPrevious();
+        if($this->tui->getFocusManager()->getFocus()?->getStyle()?->getHidden()) {
+            $this->tui->getFocusManager()->focusPrevious();
+        }
+    }
+
+    public function updateFocus(): void
+    {
+        if ($this->tui->getFocusManager()->getFocus()?->getStyle()?->getHidden()) {
+            $this->tui->getFocusManager()->focusNext();
+        }
+    }
+
+    public function requestPageRender(bool $updateFocus = false): void
+    {
+        $this->tui->requestRender();
+        if ($updateFocus) {
+            $this->updateFocus();
+        }
+    }
+
     /** @return class-string */
     private function resolveEventClass(\Closure $listener): string
     {
