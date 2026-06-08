@@ -26,10 +26,14 @@ use Symfony\Component\Tui\Style\StyleSheet;
 use Symfony\Component\Tui\Tui;
 use Symfony\Component\Tui\Widget\ContainerWidget;
 use Symfony\Component\Tui\Widget\InputWidget;
+use Symfony\Component\Tui\Widget\SelectListWidget;
 use Symfony\Component\Tui\Widget\TextWidget;
 
 final class ReportCommand extends Command
 {
+    private const string MODE_IMAGES = 'images';
+    private const string MODE_USERS = 'users';
+
     public function __construct(
         private readonly GenerateReportHandler $handler,
         private readonly bool $interactive = true,
@@ -44,7 +48,7 @@ final class ReportCommand extends Command
             ->addOption('harbor-url', null, InputOption::VALUE_REQUIRED, 'Harbor registry URL')
             ->addOption('harbor-token', null, InputOption::VALUE_REQUIRED, 'Harbor API token (falls back to $HARBOR_TOKEN env)')
             ->addOption('harbor-username', null, InputOption::VALUE_REQUIRED, 'Harbor username for Basic auth, e.g. robot account name (falls back to $HARBOR_USERNAME env)')
-            ->addOption('mode', null, InputOption::VALUE_REQUIRED, 'Report mode: images or users', 'images')
+            ->addOption('mode', null, InputOption::VALUE_REQUIRED, sprintf('Report mode: %s or %s', self::MODE_IMAGES, self::MODE_USERS), self::MODE_IMAGES)
             ->addOption('from', null, InputOption::VALUE_REQUIRED, 'Start date (YYYY-MM-DD)')
             ->addOption('to', null, InputOption::VALUE_REQUIRED, 'End date (YYYY-MM-DD)')
             ->addOption('output', null, InputOption::VALUE_REQUIRED, 'Output CSV file path')
@@ -66,9 +70,9 @@ final class ReportCommand extends Command
         $username = is_string($usernameOption) ? $usernameOption : (getenv('HARBOR_USERNAME') ?: null);
 
         $modeOption = $input->getOption('mode');
-        $mode = is_string($modeOption) ? $modeOption : 'images';
-        if (!in_array($mode, ['images', 'users'], true)) {
-            $output->writeln(sprintf('<error>Invalid mode "%s". Valid modes are: images, users.</error>', $mode));
+        $mode = is_string($modeOption) ? $modeOption : self::MODE_IMAGES;
+        if (!in_array($mode, [self::MODE_IMAGES, self::MODE_USERS], true)) {
+            $output->writeln(sprintf('<error>Invalid mode "%s". Valid modes are: %s, %s.</error>', $mode, self::MODE_IMAGES, self::MODE_USERS));
 
             return Command::FAILURE;
         }
@@ -121,7 +125,7 @@ final class ReportCommand extends Command
         }
 
         if (null === $harborUrl || null === $outputPath) {
-            [$harborUrl, $outputPath] = $this->runFormPhase($harborUrl, $outputPath);
+            [$harborUrl, $outputPath, $mode] = $this->runFormPhase($harborUrl, $outputPath, $mode);
             if (null === $harborUrl || null === $outputPath) {
                 return Command::FAILURE;
             }
@@ -141,11 +145,11 @@ final class ReportCommand extends Command
 
     /**
      * Opens a TUI form for missing required fields.
-     * Returns [harborUrl, outputPath], or [null, null] if the user cancelled.
+     * Returns [harborUrl, outputPath, mode], or [null, null, mode] if the user cancelled.
      *
-     * @return array{string|null, string|null}
+     * @return array{string|null, string|null, string}
      */
-    private function runFormPhase(?string $harborUrl, ?string $outputPath): array
+    private function runFormPhase(?string $harborUrl, ?string $outputPath, string $mode): array
     {
         $cancelled = false;
 
@@ -167,6 +171,18 @@ final class ReportCommand extends Command
         $form->setStyle(new Style(direction: Direction::Vertical, gap: 1));
         $form->addStyleClass('form');
         $form->add($titleWidget);
+
+        $modeWidget = new SelectListWidget(
+            items: [
+                ['value' => self::MODE_IMAGES, 'label' => self::MODE_IMAGES, 'description' => 'pulls per image/tag'],
+                ['value' => self::MODE_USERS, 'label' => self::MODE_USERS, 'description' => 'pulls per user'],
+            ],
+            maxVisible: 2,
+        );
+        $modeWidget->setSelectedIndex(self::MODE_IMAGES === $mode ? 0 : 1);
+
+        $form->add(new TextWidget('Report mode'));
+        $form->add($modeWidget);
 
         if (null === $harborUrl) {
             $form->add(new TextWidget('Harbor URL'));
@@ -206,8 +222,10 @@ final class ReportCommand extends Command
             $hintWidget,
             $urlInput,
             $outputInput,
+            $modeWidget,
             &$harborUrl,
-            &$outputPath
+            &$outputPath,
+            &$mode
         ) {
             $data = $event->getData();
 
@@ -238,6 +256,7 @@ final class ReportCommand extends Command
 
                 $harborUrl = $resolvedUrl;
                 $outputPath = $resolvedOutput;
+                $mode = $modeWidget->getSelectedItem()['value'] ?? $mode;
                 $tui->stop();
                 $event->stopPropagation();
             }
@@ -246,10 +265,10 @@ final class ReportCommand extends Command
         $tui->run();
 
         if ($cancelled) {
-            return [null, null];
+            return [null, null, $mode];
         }
 
-        return [$harborUrl, $outputPath];
+        return [$harborUrl, $outputPath, $mode];
     }
 
     private function runTuiPhase(GenerateReportUseCase $command): int
