@@ -3,7 +3,7 @@
 namespace Porthole\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Porthole\Command\ReportCommand;
+use Porthole\Command\StartCommand;
 use Porthole\Harbor\HarborApiClient;
 use Porthole\Report\ReportBuilder;
 use Porthole\Result\CsvWriter;
@@ -12,9 +12,9 @@ use Symfony\Component\HttpClient\MockHttpClient;
 
 class AutoloadTest extends TestCase
 {
-    public function testReportCommandIsInstantiable(): void
+    public function testStartCommandIsInstantiable(): void
     {
-        $this->assertInstanceOf(ReportCommand::class, new ReportCommand(
+        $this->assertInstanceOf(StartCommand::class, new StartCommand(
             new GenerateReportHandler(
                 new HarborApiClient(new MockHttpClient()),
                 new ReportBuilder(),

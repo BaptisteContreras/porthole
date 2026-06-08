@@ -58,8 +58,4 @@ report:
 	  --add-host harbor.local:host-gateway \
 	  -e HARBOR_TOKEN \
 	  -e HARBOR_USERNAME \
-	  porthole-dev bin/porthole \
-	  --no-verify-ssl \
-	  $$([ -n "$${HARBOR_URL}" ] && echo "--harbor-url=$${HARBOR_URL}") \
-	  $$([ -n "$${FROM}" ] && echo "--from=$${FROM}") \
-	  $$([ -n "$${TO}" ] && echo "--to=$${TO}")
+	  porthole-dev bin/porthole
