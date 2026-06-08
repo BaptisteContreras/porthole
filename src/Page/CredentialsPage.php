@@ -113,6 +113,7 @@ final class CredentialsPage implements PageInterface
             if ($keybindings->matches($data, 'toggle_token')) {
                 $tokenVisible = !$tokenVisible;
                 $refreshTokenDisplay();
+
                 $event->stopPropagation();
 
                 return;

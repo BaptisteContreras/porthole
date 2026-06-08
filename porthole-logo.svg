@@ -1,0 +1,77 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Porthole logo">
+  <defs>
+    <radialGradient id="rim" cx="38%" cy="32%" r="78%">
+      <stop offset="0%" stop-color="#4d7383"/>
+      <stop offset="45%" stop-color="#2c4d5a"/>
+      <stop offset="100%" stop-color="#102832"/>
+    </radialGradient>
+    <linearGradient id="rivet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5b7d8a"/>
+      <stop offset="100%" stop-color="#16303a"/>
+    </linearGradient>
+    <radialGradient id="glass" cx="42%" cy="30%" r="85%">
+      <stop offset="0%" stop-color="#1d4258"/>
+      <stop offset="55%" stop-color="#123246"/>
+      <stop offset="100%" stop-color="#081c2a"/>
+    </radialGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#081c2a" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#081c2a" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="glint" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.30"/>
+      <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="glassClip"><circle cx="256" cy="256" r="190"/></clipPath>
+  </defs>
+
+  <!-- outer rim -->
+  <circle cx="256" cy="256" r="248" fill="url(#rim)"/>
+  <circle cx="256" cy="256" r="248" fill="none" stroke="#0a1c24" stroke-width="3"/>
+  <!-- bright top-left arc highlight on rim -->
+  <path d="M 102 102 A 242 242 0 0 1 410 102"
+        fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.16"/>
+  <!-- inner bevel -->
+  <circle cx="256" cy="256" r="196" fill="none" stroke="#0a1c24" stroke-width="8"/>
+  <circle cx="256" cy="256" r="192" fill="none" stroke="#5d818f" stroke-width="2" opacity="0.5"/>
+
+  <!-- glass scene -->
+  <g clip-path="url(#glassClip)">
+    <circle cx="256" cy="256" r="190" fill="url(#glass)"/>
+    <line x1="80" y1="290" x2="432" y2="290" stroke="#ffffff" stroke-width="1" opacity="0.05"/>
+    <line x1="80" y1="240" x2="432" y2="240" stroke="#ffffff" stroke-width="1" opacity="0.05"/>
+    <line x1="80" y1="190" x2="432" y2="190" stroke="#ffffff" stroke-width="1" opacity="0.05"/>
+    <!-- reflections -->
+    <rect x="162.0" y="330.0" width="38" height="42.9" rx="3" fill="#2EC4B6" opacity="0.16"/>
+    <rect x="212.0" y="330.0" width="38" height="61.6" rx="3" fill="#36A9E1" opacity="0.16"/>
+    <rect x="262.0" y="330.0" width="38" height="50.6" rx="3" fill="#2EC4B6" opacity="0.16"/>
+    <rect x="312.0" y="330.0" width="38" height="77.0" rx="3" fill="#FFB703" opacity="0.16"/>
+    <!-- water fade over reflections -->
+    <rect x="66" y="330" width="380" height="190" fill="url(#water)"/>
+    <!-- waterline / dock -->
+    <line x1="66" y1="330" x2="446" y2="330" stroke="#9fdce0" stroke-width="2" opacity="0.35"/>
+    <!-- containers as bar chart -->
+    <rect x="162.0" y="252.0" width="38" height="78.0" rx="3" fill="#2EC4B6"/><rect x="168.0" y="257.0" width="2" height="68.0" fill="#1f9488" opacity="0.45"/><rect x="175.0" y="257.0" width="2" height="68.0" fill="#1f9488" opacity="0.45"/><rect x="182.0" y="257.0" width="2" height="68.0" fill="#1f9488" opacity="0.45"/><rect x="189.0" y="257.0" width="2" height="68.0" fill="#1f9488" opacity="0.45"/><rect x="162.0" y="252.0" width="38" height="6" rx="3" fill="#1f9488"/><rect x="162.0" y="252.0" width="7" height="6" fill="#1f9488"/><rect x="193.0" y="252.0" width="7" height="6" fill="#1f9488"/><rect x="162.0" y="258.0" width="3" height="72.0" fill="#ffffff" opacity="0.18"/>
+    <rect x="212.0" y="218.0" width="38" height="112.0" rx="3" fill="#36A9E1"/><rect x="218.0" y="223.0" width="2" height="102.0" fill="#2680ad" opacity="0.45"/><rect x="225.0" y="223.0" width="2" height="102.0" fill="#2680ad" opacity="0.45"/><rect x="232.0" y="223.0" width="2" height="102.0" fill="#2680ad" opacity="0.45"/><rect x="239.0" y="223.0" width="2" height="102.0" fill="#2680ad" opacity="0.45"/><rect x="212.0" y="218.0" width="38" height="6" rx="3" fill="#2680ad"/><rect x="212.0" y="218.0" width="7" height="6" fill="#2680ad"/><rect x="243.0" y="218.0" width="7" height="6" fill="#2680ad"/><rect x="212.0" y="224.0" width="3" height="106.0" fill="#ffffff" opacity="0.18"/>
+    <rect x="262.0" y="238.0" width="38" height="92.0" rx="3" fill="#2EC4B6"/><rect x="268.0" y="243.0" width="2" height="82.0" fill="#1f9488" opacity="0.45"/><rect x="275.0" y="243.0" width="2" height="82.0" fill="#1f9488" opacity="0.45"/><rect x="282.0" y="243.0" width="2" height="82.0" fill="#1f9488" opacity="0.45"/><rect x="289.0" y="243.0" width="2" height="82.0" fill="#1f9488" opacity="0.45"/><rect x="262.0" y="238.0" width="38" height="6" rx="3" fill="#1f9488"/><rect x="262.0" y="238.0" width="7" height="6" fill="#1f9488"/><rect x="293.0" y="238.0" width="7" height="6" fill="#1f9488"/><rect x="262.0" y="244.0" width="3" height="86.0" fill="#ffffff" opacity="0.18"/>
+    <rect x="312.0" y="190.0" width="38" height="140.0" rx="3" fill="#FFB703"/><rect x="318.0" y="195.0" width="2" height="130.0" fill="#d99400" opacity="0.45"/><rect x="325.0" y="195.0" width="2" height="130.0" fill="#d99400" opacity="0.45"/><rect x="332.0" y="195.0" width="2" height="130.0" fill="#d99400" opacity="0.45"/><rect x="339.0" y="195.0" width="2" height="130.0" fill="#d99400" opacity="0.45"/><rect x="312.0" y="190.0" width="38" height="6" rx="3" fill="#d99400"/><rect x="312.0" y="190.0" width="7" height="6" fill="#d99400"/><rect x="343.0" y="190.0" width="7" height="6" fill="#d99400"/><rect x="312.0" y="196.0" width="3" height="134.0" fill="#ffffff" opacity="0.18"/>
+    <!-- glass glint -->
+    <ellipse cx="190" cy="170" rx="150" ry="120" fill="url(#glint)" transform="rotate(-20 190 170)"/>
+  </g>
+
+  <!-- rim bolts -->
+  <g>
+    <circle cx="478.0" cy="256.0" r="9" fill="url(#rivet)"/><circle cx="476.0" cy="254.0" r="3.8" fill="#fff" opacity="0.28"/>
+    <circle cx="448.3" cy="367.0" r="9" fill="url(#rivet)"/><circle cx="446.3" cy="365.0" r="3.8" fill="#fff" opacity="0.28"/>
+    <circle cx="367.0" cy="448.3" r="9" fill="url(#rivet)"/><circle cx="365.0" cy="446.3" r="3.8" fill="#fff" opacity="0.28"/>
+    <circle cx="256.0" cy="478.0" r="9" fill="url(#rivet)"/><circle cx="254.0" cy="476.0" r="3.8" fill="#fff" opacity="0.28"/>
+    <circle cx="145.0" cy="448.3" r="9" fill="url(#rivet)"/><circle cx="143.0" cy="446.3" r="3.8" fill="#fff" opacity="0.28"/>
+    <circle cx="63.7" cy="367.0" r="9" fill="url(#rivet)"/><circle cx="61.7" cy="365.0" r="3.8" fill="#fff" opacity="0.28"/>
+    <circle cx="34.0" cy="256.0" r="9" fill="url(#rivet)"/><circle cx="32.0" cy="254.0" r="3.8" fill="#fff" opacity="0.28"/>
+    <circle cx="63.7" cy="145.0" r="9" fill="url(#rivet)"/><circle cx="61.7" cy="143.0" r="3.8" fill="#fff" opacity="0.28"/>
+    <circle cx="145.0" cy="63.7" r="9" fill="url(#rivet)"/><circle cx="143.0" cy="61.7" r="3.8" fill="#fff" opacity="0.28"/>
+    <circle cx="256.0" cy="34.0" r="9" fill="url(#rivet)"/><circle cx="254.0" cy="32.0" r="3.8" fill="#fff" opacity="0.28"/>
+    <circle cx="367.0" cy="63.7" r="9" fill="url(#rivet)"/><circle cx="365.0" cy="61.7" r="3.8" fill="#fff" opacity="0.28"/>
+    <circle cx="448.3" cy="145.0" r="9" fill="url(#rivet)"/><circle cx="446.3" cy="143.0" r="3.8" fill="#fff" opacity="0.28"/>
+  </g>
+</svg>
