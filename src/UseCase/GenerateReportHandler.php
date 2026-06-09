@@ -8,8 +8,10 @@ use Porthole\Event\CsvWrittenEvent;
 use Porthole\Event\ReportBuiltEvent;
 use Porthole\Harbor\HarborApiClient;
 use Porthole\Harbor\HarborContext;
+use Porthole\Report\ImageReport;
 use Porthole\Report\ImageReportRow;
 use Porthole\Report\ReportBuilder;
+use Porthole\Report\UserReport;
 use Porthole\Report\UserReportRow;
 use Porthole\Result\CsvWriter;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
@@ -39,38 +41,30 @@ final class GenerateReportHandler
         }
         $dispatcher->dispatch(new AuditLogsFetchedEvent(count($allEntries)));
 
-        [$header, $rows] = $this->buildCsvData($allEntries, $command->mode);
-        $dispatcher->dispatch(new ReportBuiltEvent(count($rows)));
+        $report = $this->buildReport($allEntries, $command->mode);
+        $dispatcher->dispatch(new ReportBuiltEvent(count($report->rows)));
 
-        $rowCount = $this->csvWriter->write($command->outputPath, $header, $rows);
+        $rowCount = $this->csvWriter->write($command->outputPath, $command->mode, $report->rows);
         $dispatcher->dispatch(new CsvWrittenEvent($command->outputPath, $rowCount));
     }
 
     /**
      * @param \Porthole\Harbor\AuditLogEntry[] $entries
-     *
-     * @return array{list<string>, list<list<int|string>>}
      */
-    private function buildCsvData(array $entries, string $mode): array
+    private function buildReport(array $entries, string $mode): ImageReport|UserReport
     {
         if ('users' === $mode) {
             $report = $this->reportBuilder->buildUsersReport($entries);
             $rows = $report->rows;
             usort($rows, fn (UserReportRow $a, UserReportRow $b) => $a->username <=> $b->username ?: $b->pullCount <=> $a->pullCount);
 
-            return [
-                ['User', 'Image', 'Tag', 'Number of pulls'],
-                array_map(fn (UserReportRow $r) => [$r->username, $r->image, $r->tag, $r->pullCount], $rows),
-            ];
+            return new UserReport($rows);
         }
 
         $report = $this->reportBuilder->buildImagesReport($entries);
         $rows = $report->rows;
         usort($rows, fn (ImageReportRow $a, ImageReportRow $b) => $b->pullCount <=> $a->pullCount);
 
-        return [
-            ['Image', 'Tag', 'Number of pulls'],
-            array_map(fn (ImageReportRow $r) => [$r->image, $r->tag, $r->pullCount], $rows),
-        ];
+        return new ImageReport($rows);
     }
 }

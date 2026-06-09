@@ -7,6 +7,7 @@ use Porthole\Event\AuditLogsFetchedEvent;
 use Porthole\Event\CsvWrittenEvent;
 use Porthole\Event\ReportBuiltEvent;
 use Porthole\Harbor\HarborContext;
+use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
 use Porthole\Tui\PageInterface;
 use Porthole\UseCase\GenerateReportCommand as GenerateReportUseCase;
@@ -31,6 +32,7 @@ final class BuildReportPage implements PageInterface
     public function __construct(
         private readonly HarborContext $context,
         private readonly GenerateReportHandler $handler,
+        private readonly ?CsvReader $reader = null,
     ) {
     }
 
@@ -98,7 +100,7 @@ final class BuildReportPage implements PageInterface
 
             if ('finished' === $phase) {
                 if ($keybindings->matches($data, 'submit')) {
-                    $navigator->navigateTo(new HomePage($this->context, $this->handler));
+                    $navigator->navigateTo(new HomePage($this->context, $this->handler, $this->reader));
                     $event->stopPropagation();
                 }
 

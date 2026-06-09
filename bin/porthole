@@ -6,18 +6,36 @@ require_once __DIR__.'/../vendor/autoload.php';
 use Porthole\Command\StartCommand;
 use Porthole\Harbor\HarborApiClient;
 use Porthole\Report\ReportBuilder;
+use Porthole\Result\CsvReader;
 use Porthole\Result\CsvWriter;
 use Porthole\UseCase\GenerateReportHandler;
 use Symfony\Component\Console\Application;
 use Symfony\Component\HttpClient\HttpClient;
+use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
+use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
+use Symfony\Component\Serializer\Encoder\CsvEncoder;
+use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
+use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
+use Symfony\Component\Serializer\NameConverter\MetadataAwareNameConverter;
+use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
+use Symfony\Component\Serializer\Serializer;
+
+$classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+$nameConverter = new MetadataAwareNameConverter($classMetadataFactory);
+$propertyInfo = new PropertyInfoExtractor(typeExtractors: [new ReflectionExtractor()]);
+$serializer = new Serializer(
+    [new ObjectNormalizer(classMetadataFactory: $classMetadataFactory, nameConverter: $nameConverter, propertyTypeExtractor: $propertyInfo)],
+    [new CsvEncoder()]
+);
 
 $app = new Application('porthole', '0.1.0');
 $app->addCommand(new StartCommand(
     new GenerateReportHandler(
         new HarborApiClient(HttpClient::create()),
         new ReportBuilder(),
-        new CsvWriter(),
-    )
+        new CsvWriter($serializer),
+    ),
+    new CsvReader($serializer),
 ));
 $app->setDefaultCommand('start', true);
 $app->run();

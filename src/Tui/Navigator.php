@@ -42,7 +42,7 @@ final class Navigator
     public function focusNextVisibleWidget(): void
     {
         $this->tui->getFocusManager()->focusNext();
-        if($this->tui->getFocusManager()->getFocus()?->getStyle()?->getHidden()) {
+        if ($this->tui->getFocusManager()->getFocus()?->getStyle()?->getHidden()) {
             $this->tui->getFocusManager()->focusNext();
         }
     }
@@ -50,7 +50,7 @@ final class Navigator
     public function focusPreviousVisibleWidget(): void
     {
         $this->tui->getFocusManager()->focusPrevious();
-        if($this->tui->getFocusManager()->getFocus()?->getStyle()?->getHidden()) {
+        if ($this->tui->getFocusManager()->getFocus()?->getStyle()?->getHidden()) {
             $this->tui->getFocusManager()->focusPrevious();
         }
     }

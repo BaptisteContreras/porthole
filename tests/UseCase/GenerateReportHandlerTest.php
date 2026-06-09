@@ -15,6 +15,14 @@ use Porthole\UseCase\GenerateReportHandler;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
+use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
+use Symfony\Component\Serializer\Encoder\CsvEncoder;
+use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
+use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
+use Symfony\Component\Serializer\NameConverter\MetadataAwareNameConverter;
+use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
+use Symfony\Component\Serializer\Serializer;
 
 class GenerateReportHandlerTest extends TestCase
 {
@@ -44,7 +52,7 @@ class GenerateReportHandlerTest extends TestCase
         $handler = new GenerateReportHandler(
             new HarborApiClient(new MockHttpClient([new MockResponse($body)])),
             new ReportBuilder(),
-            new CsvWriter(),
+            $this->makeWriter(),
         );
 
         $command = new GenerateReportCommand(
@@ -83,7 +91,7 @@ class GenerateReportHandlerTest extends TestCase
         $this->assertSame(3, $dispatched[1]->totalEntries);
 
         $this->assertInstanceOf(ReportBuiltEvent::class, $dispatched[2]);
-        $this->assertSame(2, $dispatched[2]->rowCount); // nginx + redis = 2 distinct images
+        $this->assertSame(2, $dispatched[2]->rowCount);
 
         $this->assertInstanceOf(CsvWrittenEvent::class, $dispatched[3]);
         $this->assertSame(2, $dispatched[3]->rowCount);
@@ -107,7 +115,7 @@ class GenerateReportHandlerTest extends TestCase
                 new MockResponse($page2),
             ])),
             new ReportBuilder(),
-            new CsvWriter(),
+            $this->makeWriter(),
         );
 
         $command = new GenerateReportCommand(
@@ -133,5 +141,17 @@ class GenerateReportHandlerTest extends TestCase
             ['page' => 1, 'total' => 1],
             ['page' => 2, 'total' => 2],
         ], $pageEvents);
+    }
+
+    private function makeWriter(): CsvWriter
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $nameConverter = new MetadataAwareNameConverter($classMetadataFactory);
+        $propertyInfo = new PropertyInfoExtractor(typeExtractors: [new ReflectionExtractor()]);
+
+        return new CsvWriter(new Serializer(
+            [new ObjectNormalizer(classMetadataFactory: $classMetadataFactory, nameConverter: $nameConverter, propertyTypeExtractor: $propertyInfo)],
+            [new CsvEncoder()]
+        ));
     }
 }

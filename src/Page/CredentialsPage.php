@@ -3,6 +3,7 @@
 namespace Porthole\Page;
 
 use Porthole\Harbor\HarborContext;
+use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
 use Porthole\Tui\PageInterface;
 use Porthole\UseCase\GenerateReportHandler;
@@ -21,6 +22,7 @@ final class CredentialsPage implements PageInterface
     public function __construct(
         private readonly GenerateReportHandler $handler,
         private readonly ?HarborContext $context = null,
+        private readonly ?CsvReader $reader = null,
     ) {
     }
 
@@ -49,7 +51,6 @@ final class CredentialsPage implements PageInterface
             maxVisible: 2,
         );
 
-        // SSL: if context provided, use its verifySsl; else default to true (index 0 = Yes)
         if (null !== $this->context && !$this->context->verifySsl) {
             $sslWidget->setSelectedIndex(1);
         }
@@ -150,6 +151,7 @@ final class CredentialsPage implements PageInterface
                         verifySsl: null === $sslItem || 'yes' === $sslItem['value'],
                     ),
                     $this->handler,
+                    $this->reader,
                 ));
                 $event->stopPropagation();
             }

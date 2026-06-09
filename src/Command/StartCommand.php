@@ -3,6 +3,7 @@
 namespace Porthole\Command;
 
 use Porthole\Page\CredentialsPage;
+use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
 use Porthole\UseCase\GenerateReportHandler;
 use Symfony\Component\Console\Command\Command;
@@ -21,6 +22,7 @@ final class StartCommand extends Command
 {
     public function __construct(
         private readonly GenerateReportHandler $handler,
+        private readonly CsvReader $reader,
     ) {
         parent::__construct();
     }
@@ -52,7 +54,7 @@ final class StartCommand extends Command
         });
 
         $navigator = new Navigator($tui, $root);
-        $navigator->navigateTo(new CredentialsPage($this->handler));
+        $navigator->navigateTo(new CredentialsPage($this->handler, reader: $this->reader));
 
         $tui->run();
 

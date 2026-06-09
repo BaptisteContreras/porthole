@@ -3,6 +3,7 @@
 namespace Porthole\Page;
 
 use Porthole\Harbor\HarborContext;
+use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
 use Porthole\Tui\PageInterface;
 use Porthole\UseCase\GenerateReportHandler;
@@ -19,6 +20,7 @@ final class HomePage implements PageInterface
     public function __construct(
         private readonly HarborContext $context,
         private readonly GenerateReportHandler $handler,
+        private readonly ?CsvReader $reader = null,
     ) {
     }
 
@@ -39,7 +41,7 @@ final class HomePage implements PageInterface
         $menuWidget = new SelectListWidget(
             items: [
                 ['value' => 'build_report', 'label' => 'Build report', 'description' => 'generate a CSV pull activity report'],
-                ['value' => 'view_report', 'label' => 'View report', 'description' => 'coming soon'],
+                ['value' => 'view_report', 'label' => 'View report', 'description' => 'open and explore a saved report'],
                 ['value' => 'credentials', 'label' => 'Change credentials', 'description' => 'update Harbor connection settings'],
             ],
             maxVisible: 3,
@@ -52,18 +54,27 @@ final class HomePage implements PageInterface
             }
 
             if ('build_report' === $item['value']) {
-                $navigator->navigateTo(new BuildReportPage($this->context, $this->handler));
+                $navigator->navigateTo(new BuildReportPage($this->context, $this->handler, $this->reader));
 
                 return;
             }
 
             if ('credentials' === $item['value']) {
-                $navigator->navigateTo(new CredentialsPage($this->handler, $this->context));
+                $navigator->navigateTo(new CredentialsPage($this->handler, $this->context, $this->reader));
 
                 return;
             }
 
-            $hint->setText('View report is not yet implemented.');
+            if ('view_report' === $item['value']) {
+                if (null === $this->reader) {
+                    $hint->setText('View report is not available.');
+
+                    return;
+                }
+                $navigator->navigateTo(new SelectCsvPage($this->reader, $this->context, $this->handler));
+
+                return;
+            }
         });
 
         $container = new ContainerWidget();
@@ -80,9 +91,9 @@ final class HomePage implements PageInterface
 
     private function buildLogo(): string
     {
-        $r    = "\e[0m";
+        $r = "\e[0m";
         $bolt = "\e[38;2;91;125;138m";
-        $rim  = "\e[38;2;78;130;152m";
+        $rim = "\e[38;2;78;130;152m";
         $teal = "\e[38;2;46;196;182m";
         $blue = "\e[38;2;54;169;225m";
         $yell = "\e[38;2;255;183;3m";
