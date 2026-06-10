@@ -56,23 +56,31 @@ final class ViewReportPage implements PageInterface
         $dataContainer = new ContainerWidget();
         $dataContainer->setStyle(new Style(direction: Direction::Vertical));
 
-        $initialRows = $views[$firstKey]['rows'];
-        $dataList = new SelectListWidget(
-            items: array_map(
-                fn (string $line) => ['value' => $line, 'label' => $line],
-                $initialRows,
-            ),
-            maxVisible: 15,
-        );
-        $dataContainer->add($dataList);
+        $shaDetail = new TextWidget('');
+        $shaDetail->addStyleClass('hint');
 
-        $hint = new TextWidget(sprintf('[%d rows]  ↑↓ to scroll  Ctrl+B: back', count($initialRows)));
+        $hint = new TextWidget(sprintf('[%d rows]  Tab: switch focus  ↑↓ to scroll  Ctrl+B: back', count($views[$firstKey]['rows'])));
         $hint->addStyleClass('hint');
+
+        $buildDataList = function (array $items) use ($shaDetail, $navigator): SelectListWidget {
+            $list = new SelectListWidget(items: $items, maxVisible: 15);
+            $list->onSelect(function (SelectEvent $event) use ($list, $shaDetail, $navigator): void {
+                $item = $list->getSelectedItem();
+                $sha = $item['value'] ?? '';
+                $shaDetail->setText('' !== $sha ? 'SHA: '.$sha : '');
+                $navigator->requestPageRender();
+            });
+
+            return $list;
+        };
+
+        $dataContainer->add($buildDataList($views[$firstKey]['rows']));
 
         $container->add($title);
         $container->add($tabWidget);
         $container->add($headerWidget);
         $container->add($dataContainer);
+        $container->add($shaDetail);
         $container->add($hint);
 
         $tabWidget->onSelect(function (SelectEvent $event) use (
@@ -80,8 +88,10 @@ final class ViewReportPage implements PageInterface
             $views,
             $headerWidget,
             $dataContainer,
+            $shaDetail,
             $hint,
             $navigator,
+            $buildDataList,
         ): void {
             $item = $tabWidget->getSelectedItem();
             if (null === $item) {
@@ -93,23 +103,25 @@ final class ViewReportPage implements PageInterface
             }
 
             $headerWidget->setText($view['header']);
+            $shaDetail->setText('');
             $dataContainer->clear();
             $rows = $view['rows'];
-            $dataContainer->add(new SelectListWidget(
-                items: array_map(
-                    fn (string $line) => ['value' => $line, 'label' => $line],
-                    $rows,
-                ),
-                maxVisible: 15,
-            ));
-            $hint->setText(sprintf('[%d rows]  ↑↓ to scroll  Ctrl+B: back', count($rows)));
+            $dataContainer->add($buildDataList($rows));
+            $hint->setText(sprintf('[%d rows]  Tab: switch focus  ↑↓ to scroll  Ctrl+B: back', count($rows)));
             $navigator->requestPageRender();
         });
 
-        $keybindings = new Keybindings(['back' => ['ctrl+b']]);
+        $keybindings = new Keybindings(['back' => ['ctrl+b'], 'focus_next' => ['tab']]);
         $navigator->listen(function (InputEvent $event) use ($keybindings, $navigator): void {
             if ($keybindings->matches($event->getData(), 'back')) {
                 $navigator->navigateTo(new SelectCsvPage($this->reader, $this->context, $this->handler));
+                $event->stopPropagation();
+
+                return;
+            }
+
+            if ($keybindings->matches($event->getData(), 'focus_next')) {
+                $navigator->focusNextVisibleWidget();
                 $event->stopPropagation();
             }
         });
@@ -118,7 +130,7 @@ final class ViewReportPage implements PageInterface
     }
 
     /**
-     * @return array<string, array{label: string, header: string, rows: list<string>}>
+     * @return array<string, array{label: string, header: string, rows: list<array{value: string, label: string}>}>
      */
     private function computeViews(): array
     {
@@ -129,8 +141,27 @@ final class ViewReportPage implements PageInterface
         return $this->computeUserViews($this->report);
     }
 
+    private function normalizeImageName(string $image): string
+    {
+        return explode('@', $image)[0];
+    }
+
+    private function isSha(string $value): bool
+    {
+        return (bool) preg_match('/^[a-f0-9]{16,}$/i', $value);
+    }
+
+    private function truncateSha(string $value): string
+    {
+        if ($this->isSha($value)) {
+            return substr($value, 0, 4).'...'.substr($value, -4);
+        }
+
+        return $value;
+    }
+
     /**
-     * @return array<string, array{label: string, header: string, rows: list<string>}>
+     * @return array<string, array{label: string, header: string, rows: list<array{value: string, label: string}>}>
      */
     private function computeImageViews(ImageReport $report): array
     {
@@ -141,19 +172,26 @@ final class ViewReportPage implements PageInterface
 
         $byImageTotals = [];
         foreach ($allRows as $row) {
-            $byImageTotals[$row->image] = ($byImageTotals[$row->image] ?? 0) + $row->pullCount;
+            $key = $this->normalizeImageName($row->image);
+            $byImageTotals[$key] = ($byImageTotals[$key] ?? 0) + $row->pullCount;
         }
         arsort($byImageTotals);
 
-        $imageHeader = sprintf('%-40s  %-20s  %6s', 'Image', 'Tag', 'Pulls');
+        $totalPulls = array_sum(array_map(fn (ImageReportRow $r) => $r->pullCount, $allRows));
+
+        $imageHeader = sprintf('%-40s  %-11s  %6s', 'Image', 'Tag', 'Pulls');
         $byImageHeader = sprintf('%-40s  %6s', 'Image', 'Pulls');
+        $totalHeader = sprintf('%-20s  %6s', 'Metric', 'Value');
 
         return [
             'all' => [
                 'label' => 'All rows',
                 'header' => $imageHeader,
                 'rows' => array_map(
-                    fn (ImageReportRow $r) => sprintf('%-40s  %-20s  %6d', $r->image, $r->tag, $r->pullCount),
+                    fn (ImageReportRow $r) => [
+                        'value' => $this->isSha($r->tag) ? $r->tag : '',
+                        'label' => sprintf('%-40s  %-11s  %6d', $r->image, $this->truncateSha($r->tag), $r->pullCount),
+                    ],
                     $allRows,
                 ),
             ],
@@ -161,7 +199,10 @@ final class ViewReportPage implements PageInterface
                 'label' => 'Least pulled',
                 'header' => $imageHeader,
                 'rows' => array_map(
-                    fn (ImageReportRow $r) => sprintf('%-40s  %-20s  %6d', $r->image, $r->tag, $r->pullCount),
+                    fn (ImageReportRow $r) => [
+                        'value' => $this->isSha($r->tag) ? $r->tag : '',
+                        'label' => sprintf('%-40s  %-11s  %6d', $r->image, $this->truncateSha($r->tag), $r->pullCount),
+                    ],
                     $leastPulled,
                 ),
             ],
@@ -169,16 +210,28 @@ final class ViewReportPage implements PageInterface
                 'label' => 'By image',
                 'header' => $byImageHeader,
                 'rows' => array_map(
-                    fn (string $image, int $pulls) => sprintf('%-40s  %6d', $image, $pulls),
+                    fn (string $image, int $pulls) => [
+                        'value' => '',
+                        'label' => sprintf('%-40s  %6d', $image, $pulls),
+                    ],
                     array_keys($byImageTotals),
                     array_values($byImageTotals),
                 ),
+            ],
+            'total' => [
+                'label' => 'Total',
+                'header' => $totalHeader,
+                'rows' => [
+                    ['value' => '', 'label' => sprintf('%-20s  %6d', 'Total pulls', $totalPulls)],
+                    ['value' => '', 'label' => sprintf('%-20s  %6d', 'Unique images', count($byImageTotals))],
+                    ['value' => '', 'label' => sprintf('%-20s  %6d', 'Unique tags', count($allRows))],
+                ],
             ],
         ];
     }
 
     /**
-     * @return array<string, array{label: string, header: string, rows: list<string>}>
+     * @return array<string, array{label: string, header: string, rows: list<array{value: string, label: string}>}>
      */
     private function computeUserViews(UserReport $report): array
     {
@@ -189,7 +242,8 @@ final class ViewReportPage implements PageInterface
 
         $byImageTotals = [];
         foreach ($allRows as $row) {
-            $byImageTotals[$row->image] = ($byImageTotals[$row->image] ?? 0) + $row->pullCount;
+            $key = $this->normalizeImageName($row->image);
+            $byImageTotals[$key] = ($byImageTotals[$key] ?? 0) + $row->pullCount;
         }
         arsort($byImageTotals);
 
@@ -199,16 +253,22 @@ final class ViewReportPage implements PageInterface
         }
         arsort($topUserTotals);
 
-        $userHeader = sprintf('%-20s  %-35s  %-15s  %6s', 'User', 'Image', 'Tag', 'Pulls');
+        $totalPulls = array_sum(array_map(fn (UserReportRow $r) => $r->pullCount, $allRows));
+
+        $userHeader = sprintf('%-20s  %-35s  %-11s  %6s', 'User', 'Image', 'Tag', 'Pulls');
         $byImageHeader = sprintf('%-40s  %6s', 'Image', 'Pulls');
         $topUserHeader = sprintf('%-20s  %6s', 'User', 'Pulls');
+        $totalHeader = sprintf('%-20s  %6s', 'Metric', 'Value');
 
         return [
             'all' => [
                 'label' => 'All rows',
                 'header' => $userHeader,
                 'rows' => array_map(
-                    fn (UserReportRow $r) => sprintf('%-20s  %-35s  %-15s  %6d', $r->username, $r->image, $r->tag, $r->pullCount),
+                    fn (UserReportRow $r) => [
+                        'value' => $this->isSha($r->tag) ? $r->tag : '',
+                        'label' => sprintf('%-20s  %-35s  %-11s  %6d', $r->username, $r->image, $this->truncateSha($r->tag), $r->pullCount),
+                    ],
                     $allRows,
                 ),
             ],
@@ -216,7 +276,10 @@ final class ViewReportPage implements PageInterface
                 'label' => 'Least pulled',
                 'header' => $userHeader,
                 'rows' => array_map(
-                    fn (UserReportRow $r) => sprintf('%-20s  %-35s  %-15s  %6d', $r->username, $r->image, $r->tag, $r->pullCount),
+                    fn (UserReportRow $r) => [
+                        'value' => $this->isSha($r->tag) ? $r->tag : '',
+                        'label' => sprintf('%-20s  %-35s  %-11s  %6d', $r->username, $r->image, $this->truncateSha($r->tag), $r->pullCount),
+                    ],
                     $leastPulled,
                 ),
             ],
@@ -224,7 +287,10 @@ final class ViewReportPage implements PageInterface
                 'label' => 'By image',
                 'header' => $byImageHeader,
                 'rows' => array_map(
-                    fn (string $image, int $pulls) => sprintf('%-40s  %6d', $image, $pulls),
+                    fn (string $image, int $pulls) => [
+                        'value' => '',
+                        'label' => sprintf('%-40s  %6d', $image, $pulls),
+                    ],
                     array_keys($byImageTotals),
                     array_values($byImageTotals),
                 ),
@@ -233,10 +299,22 @@ final class ViewReportPage implements PageInterface
                 'label' => 'Top users',
                 'header' => $topUserHeader,
                 'rows' => array_map(
-                    fn (string $user, int $pulls) => sprintf('%-20s  %6d', $user, $pulls),
+                    fn (string $user, int $pulls) => [
+                        'value' => '',
+                        'label' => sprintf('%-20s  %6d', $user, $pulls),
+                    ],
                     array_keys($topUserTotals),
                     array_values($topUserTotals),
                 ),
+            ],
+            'total' => [
+                'label' => 'Total',
+                'header' => $totalHeader,
+                'rows' => [
+                    ['value' => '', 'label' => sprintf('%-20s  %6d', 'Total pulls', $totalPulls)],
+                    ['value' => '', 'label' => sprintf('%-20s  %6d', 'Unique users', count($topUserTotals))],
+                    ['value' => '', 'label' => sprintf('%-20s  %6d', 'Unique images', count($byImageTotals))],
+                ],
             ],
         ];
     }
