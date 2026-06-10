@@ -6,7 +6,9 @@ use PHPUnit\Framework\TestCase;
 use Porthole\Report\ImageReport;
 use Porthole\Report\UserReport;
 use Porthole\Result\CsvReader;
+use Porthole\Result\ImageReportReaderStrategy;
 use Porthole\Result\InvalidReportFileException;
+use Porthole\Result\UserReportReaderStrategy;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
 use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
 use Symfony\Component\Serializer\Encoder\CsvEncoder;
@@ -27,10 +29,14 @@ class CsvReaderTest extends TestCase
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $nameConverter = new MetadataAwareNameConverter($classMetadataFactory);
         $propertyInfo = new PropertyInfoExtractor(typeExtractors: [new ReflectionExtractor()]);
-        $this->reader = new CsvReader(new Serializer(
+        $serializer = new Serializer(
             [new ObjectNormalizer(classMetadataFactory: $classMetadataFactory, nameConverter: $nameConverter, propertyTypeExtractor: $propertyInfo)],
             [new CsvEncoder()]
-        ));
+        );
+        $this->reader = new CsvReader($serializer, [
+            new ImageReportReaderStrategy($serializer),
+            new UserReportReaderStrategy($serializer),
+        ]);
     }
 
     protected function tearDown(): void

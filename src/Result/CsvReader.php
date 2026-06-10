@@ -3,17 +3,18 @@
 namespace Porthole\Result;
 
 use Porthole\Report\ImageReport;
-use Porthole\Report\ImageReportRow;
 use Porthole\Report\UserReport;
-use Porthole\Report\UserReportRow;
 use Symfony\Component\Serializer\Encoder\CsvEncoder;
 use Symfony\Component\Serializer\Encoder\DecoderInterface;
-use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 
 final class CsvReader
 {
+    /**
+     * @param iterable<ReportReaderStrategyInterface> $strategies
+     */
     public function __construct(
-        private readonly DecoderInterface&DenormalizerInterface $serializer,
+        private readonly DecoderInterface $decoder,
+        private readonly iterable $strategies,
     ) {
     }
 
@@ -45,7 +46,8 @@ final class CsvReader
             throw new InvalidReportFileException('Not a porthole report file.');
         }
 
-        if (!\in_array($type, ['images', 'users'], true)) {
+        $strategy = $this->findStrategy($type);
+        if (null === $strategy) {
             fclose($handle);
             throw new InvalidReportFileException(sprintf('Unknown report type "%s".', $type));
         }
@@ -53,32 +55,23 @@ final class CsvReader
         $csvContent = (string) stream_get_contents($handle);
         fclose($handle);
 
-        if ('images' === $type) {
-            /** @var list<array<string, string>> $data */
-            $data = $this->serializer->decode($csvContent, 'csv', [
-                CsvEncoder::DELIMITER_KEY => ';',
-                CsvEncoder::AS_COLLECTION_KEY => true,
-            ]);
-
-            $rows = array_map(
-                fn (array $row): ImageReportRow => $this->serializer->denormalize($row, ImageReportRow::class, 'csv'),
-                $data,
-            );
-
-            return new ImageReport($rows);
-        }
-
         /** @var list<array<string, string>> $data */
-        $data = $this->serializer->decode($csvContent, 'csv', [
+        $data = $this->decoder->decode($csvContent, 'csv', [
             CsvEncoder::DELIMITER_KEY => ';',
             CsvEncoder::AS_COLLECTION_KEY => true,
         ]);
 
-        $rows = array_map(
-            fn (array $row): UserReportRow => $this->serializer->denormalize($row, UserReportRow::class, 'csv'),
-            $data,
-        );
+        return $strategy->build($data);
+    }
 
-        return new UserReport($rows);
+    private function findStrategy(string $type): ?ReportReaderStrategyInterface
+    {
+        foreach ($this->strategies as $strategy) {
+            if ($strategy->supports($type)) {
+                return $strategy;
+            }
+        }
+
+        return null;
     }
 }

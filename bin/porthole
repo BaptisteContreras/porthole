@@ -8,6 +8,8 @@ use Porthole\Harbor\HarborApiClient;
 use Porthole\Report\ReportBuilder;
 use Porthole\Result\CsvReader;
 use Porthole\Result\CsvWriter;
+use Porthole\Result\ImageReportReaderStrategy;
+use Porthole\Result\UserReportReaderStrategy;
 use Porthole\UseCase\GenerateReportHandler;
 use Symfony\Component\Console\Application;
 use Symfony\Component\HttpClient\HttpClient;
@@ -35,7 +37,10 @@ $app->addCommand(new StartCommand(
         new ReportBuilder(),
         new CsvWriter($serializer),
     ),
-    new CsvReader($serializer),
+    new CsvReader($serializer, [
+        new ImageReportReaderStrategy($serializer),
+        new UserReportReaderStrategy($serializer),
+    ]),
 ));
 $app->setDefaultCommand('start', true);
 $app->run();

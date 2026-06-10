@@ -8,6 +8,8 @@ use Porthole\Harbor\HarborApiClient;
 use Porthole\Report\ReportBuilder;
 use Porthole\Result\CsvReader;
 use Porthole\Result\CsvWriter;
+use Porthole\Result\ImageReportReaderStrategy;
+use Porthole\Result\UserReportReaderStrategy;
 use Porthole\UseCase\GenerateReportHandler;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
@@ -67,6 +69,11 @@ class AutoloadTest extends TestCase
 
     private function makeReader(): CsvReader
     {
-        return new CsvReader($this->makeSerializer());
+        $serializer = $this->makeSerializer();
+
+        return new CsvReader($serializer, [
+            new ImageReportReaderStrategy($serializer),
+            new UserReportReaderStrategy($serializer),
+        ]);
     }
 }

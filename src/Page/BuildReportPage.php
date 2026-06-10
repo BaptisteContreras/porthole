@@ -63,7 +63,7 @@ final class BuildReportPage implements PageInterface
         $toInput = new InputWidget();
         $toInput->addStyleClass('input');
 
-        $hint = new TextWidget('Press Enter to generate, Ctrl+C to exit');
+        $hint = new TextWidget('Press Enter to generate, Ctrl+B: back, Ctrl+C to exit');
         $hint->addStyleClass('hint');
 
         $container->add($title);
@@ -81,6 +81,7 @@ final class BuildReportPage implements PageInterface
             'submit' => ['enter'],
             'next' => [Key::TAB],
             'previous' => ['shift+tab'],
+            'back' => ['ctrl+b'],
         ]);
 
         $phase = 'form';
@@ -108,6 +109,13 @@ final class BuildReportPage implements PageInterface
             }
 
             if ('running' === $phase) {
+                $event->stopPropagation();
+
+                return;
+            }
+
+            if ($keybindings->matches($data, 'back')) {
+                $navigator->navigateTo(new HomePage($this->context, $this->handler, $this->reader));
                 $event->stopPropagation();
 
                 return;
