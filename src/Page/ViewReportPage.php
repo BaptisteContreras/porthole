@@ -11,12 +11,14 @@ use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
 use Porthole\Tui\PageInterface;
 use Porthole\UseCase\GenerateReportHandler;
+use Symfony\Component\Tui\Event\ChangeEvent;
 use Symfony\Component\Tui\Event\InputEvent;
 use Symfony\Component\Tui\Event\SelectEvent;
 use Symfony\Component\Tui\Input\Keybindings;
 use Symfony\Component\Tui\Style\Direction;
 use Symfony\Component\Tui\Style\Style;
 use Symfony\Component\Tui\Widget\ContainerWidget;
+use Symfony\Component\Tui\Widget\InputWidget;
 use Symfony\Component\Tui\Widget\SelectListWidget;
 use Symfony\Component\Tui\Widget\TextWidget;
 
@@ -42,11 +44,12 @@ final class ViewReportPage implements PageInterface
         $views = $this->computeViews();
         $firstKey = (string) array_key_first($views);
 
-        $tabItems = array_map(
-            fn (string $key, array $view) => ['value' => $key, 'label' => $view['label']],
-            array_keys($views),
-            array_values($views),
-        );
+        $tabItems = [];
+        $index = 0;
+        foreach ($views as $key => $view) {
+            $tabItems[$index] = ['value' => (string) $key, 'label' => (string) $view['label']];
+            ++$index;
+        }
 
         $tabWidget = new SelectListWidget(items: $tabItems, maxVisible: count($tabItems));
 
@@ -59,10 +62,15 @@ final class ViewReportPage implements PageInterface
         $shaDetail = new TextWidget('');
         $shaDetail->addStyleClass('hint');
 
-        $hint = new TextWidget(sprintf('[%d rows]  Tab: switch focus  ↑↓ to scroll  Ctrl+B: back', count($views[$firstKey]['rows'])));
+        $hintText = static fn (int $count): string => sprintf('[%d rows]  Tab: switch focus  ↑↓ to scroll  Ctrl+B: back', $count);
+
+        $hint = new TextWidget($hintText(count($views[$firstKey]['rows'])));
         $hint->addStyleClass('hint');
 
+        $filterContainer = new ContainerWidget();
+
         $buildDataList = function (array $items) use ($shaDetail, $navigator): SelectListWidget {
+            /** @phpstan-ignore-next-line argument.type */
             $list = new SelectListWidget(items: $items, maxVisible: 15);
             $list->onSelect(function (SelectEvent $event) use ($list, $shaDetail, $navigator): void {
                 $item = $list->getSelectedItem();
@@ -74,10 +82,66 @@ final class ViewReportPage implements PageInterface
             return $list;
         };
 
-        $dataContainer->add($buildDataList($views[$firstKey]['rows']));
+        $allUserRows = $this->report instanceof UserReport ? $this->report->rows : [];
+
+        $activateAllUserTab = function () use (
+            $allUserRows,
+            $views,
+            $filterContainer,
+            $dataContainer,
+            $shaDetail,
+            $hint,
+            $navigator,
+            $buildDataList,
+            $hintText,
+        ): void {
+            $allView = $views['all'] ?? null;
+            if (null === $allView) {
+                return;
+            }
+            $filterContainer->clear();
+            $dataContainer->clear();
+            $shaDetail->setText('');
+
+            $dataList = $buildDataList($allView['rows']);
+            $dataContainer->add($dataList);
+
+            $filterInput = new InputWidget();
+            $filterInput->setPrompt('Filter user: > ');
+            $filterInput->onChange(function (ChangeEvent $event) use ($dataList, $allUserRows, $hint, $navigator, $hintText): void {
+                $filter = strtolower($event->getValue());
+                $filteredRows = '' === $filter
+                    ? $allUserRows
+                    // prefix-only match by design: substring search would make bob_alice match 'alice'
+                    : array_values(array_filter(
+                        $allUserRows,
+                        static fn (UserReportRow $r) => str_starts_with(strtolower($r->username), $filter),
+                    ));
+                $items = array_map(
+                    fn (UserReportRow $r) => [
+                        'value' => $this->isSha($r->tag) ? $r->tag : '',
+                        'label' => sprintf('%-20s  %-35s  %-11s  %6d', $r->username, $r->image, $this->truncateSha($r->tag), $r->pullCount),
+                    ],
+                    $filteredRows,
+                );
+                $dataList->setItems($items);
+                $hint->setText($hintText(count($items)));
+                $navigator->requestPageRender();
+            });
+            $filterContainer->add($filterInput);
+
+            $hint->setText($hintText(count($allView['rows'])));
+        };
+
+        if ($this->report instanceof UserReport && 'all' === $firstKey) {
+            $activateAllUserTab();
+        } else {
+            $dataContainer->add($buildDataList($views[$firstKey]['rows']));
+        }
 
         $container->add($title);
         $container->add($tabWidget);
+        $container->add($filterContainer);
         $container->add($headerWidget);
         $container->add($dataContainer);
         $container->add($shaDetail);
@@ -88,10 +152,13 @@ final class ViewReportPage implements PageInterface
             $views,
             $headerWidget,
             $dataContainer,
+            $filterContainer,
             $shaDetail,
             $hint,
             $navigator,
             $buildDataList,
+            $activateAllUserTab,
+            $hintText,
         ): void {
             $item = $tabWidget->getSelectedItem();
             if (null === $item) {
@@ -103,11 +170,18 @@ final class ViewReportPage implements PageInterface
             }
 
             $headerWidget->setText($view['header']);
-            $shaDetail->setText('');
-            $dataContainer->clear();
-            $rows = $view['rows'];
-            $dataContainer->add($buildDataList($rows));
-            $hint->setText(sprintf('[%d rows]  Tab: switch focus  ↑↓ to scroll  Ctrl+B: back', count($rows)));
+
+            if ('all' === $item['value'] && $this->report instanceof UserReport) {
+                $activateAllUserTab();
+            } else {
+                $filterContainer->clear();
+                $shaDetail->setText('');
+                $dataContainer->clear();
+                $rows = $view['rows'];
+                $dataContainer->add($buildDataList($rows));
+                $hint->setText($hintText(count($rows)));
+            }
+
             $navigator->requestPageRender();
         });
 
