@@ -3,6 +3,7 @@
 namespace Porthole\Page;
 
 use Porthole\Harbor\HarborContext;
+use Porthole\Report\UserReport;
 use Porthole\Result\CsvReader;
 use Porthole\Result\InvalidReportFileException;
 use Porthole\Tui\Navigator;
@@ -87,7 +88,10 @@ final class SelectCsvPage implements PageInterface
                     return;
                 }
 
-                $navigator->navigateTo(new ViewReportPage($report, $this->reader, $this->context, $this->handler));
+                $page = $report instanceof UserReport
+                    ? new ViewUserReportPage($report, $this->reader, $this->context, $this->handler)
+                    : new ViewImageReportPage($report, $this->reader, $this->context, $this->handler);
+                $navigator->navigateTo($page);
                 $event->stopPropagation();
             }
         });
