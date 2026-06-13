@@ -11,4 +11,9 @@ final class UserReport
         public readonly array $rows,
     ) {
     }
+
+    public function asView(): UserReportView
+    {
+        return new UserReportView($this);
+    }
 }

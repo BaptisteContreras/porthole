@@ -11,4 +11,9 @@ final class ImageReport
         public readonly array $rows,
     ) {
     }
+
+    public function asView(): ImageReportView
+    {
+        return new ImageReportView($this);
+    }
 }

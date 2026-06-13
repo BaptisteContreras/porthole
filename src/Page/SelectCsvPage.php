@@ -76,11 +76,13 @@ final class SelectCsvPage implements PageInterface
                 } catch (InvalidReportFileException $e) {
                     $hint->setText($e->getMessage());
                     $event->stopPropagation();
+                    $navigator->requestPageRender();
 
                     return;
                 } catch (\RuntimeException $e) {
                     $hint->setText($e->getMessage());
                     $event->stopPropagation();
+                    $navigator->requestPageRender();
 
                     return;
                 }
