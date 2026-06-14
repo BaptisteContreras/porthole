@@ -16,7 +16,7 @@ use Porthole\Report\UserReportRow;
 use Porthole\Result\CsvWriter;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
-final class GenerateReportHandler
+final class GenerateReportHandler implements GenerateReportHandlerInterface
 {
     public function __construct(
         private readonly HarborApiClient $client,

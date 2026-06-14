@@ -28,7 +28,7 @@ final class ReportBuilder
             $counts[$key] = ($counts[$key] ?? 0) + 1;
         }
 
-        return new ImageReport(array_values(array_map(
+        return new ImageReport(array_map(
             static function (string $key, int $count): ImageReportRow {
                 [$image, $tag] = explode(self::KEY_SEPARATOR, $key, self::IMAGE_TAG_SPLIT_LIMIT);
 
@@ -40,7 +40,7 @@ final class ReportBuilder
             },
             array_keys($counts),
             $counts,
-        )));
+        ));
     }
 
     /**
@@ -67,7 +67,7 @@ final class ReportBuilder
             $counts[$key] = ($counts[$key] ?? 0) + 1;
         }
 
-        return new UserReport(array_values(array_map(
+        return new UserReport(array_map(
             static function (string $key, int $count): UserReportRow {
                 [$username, $image, $tag] = explode(
                     self::KEY_SEPARATOR,
@@ -84,7 +84,7 @@ final class ReportBuilder
             },
             array_keys($counts),
             $counts,
-        )));
+        ));
     }
 
     /**

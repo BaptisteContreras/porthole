@@ -3,6 +3,7 @@
 
 require_once __DIR__.'/../vendor/autoload.php';
 
+use Porthole\Command\GenerateReportWorkerCommand;
 use Porthole\Command\StartCommand;
 use Porthole\Harbor\HarborApiClient;
 use Porthole\Report\ReportBuilder;
@@ -30,17 +31,19 @@ $serializer = new Serializer(
     [new CsvEncoder()]
 );
 
+$handler = new GenerateReportHandler(
+    new HarborApiClient(HttpClient::create()),
+    new ReportBuilder(),
+    new CsvWriter($serializer),
+);
+
+$reader = new CsvReader($serializer, [
+    new ImageReportReaderStrategy($serializer),
+    new UserReportReaderStrategy($serializer),
+]);
+
 $app = new Application('porthole', '0.1.0');
-$app->addCommand(new StartCommand(
-    new GenerateReportHandler(
-        new HarborApiClient(HttpClient::create()),
-        new ReportBuilder(),
-        new CsvWriter($serializer),
-    ),
-    new CsvReader($serializer, [
-        new ImageReportReaderStrategy($serializer),
-        new UserReportReaderStrategy($serializer),
-    ]),
-));
-$app->setDefaultCommand('start', true);
+$app->addCommand(new StartCommand($handler, $reader));
+$app->addCommand(new GenerateReportWorkerCommand($handler));
+$app->setDefaultCommand('start');
 $app->run();

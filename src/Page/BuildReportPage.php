@@ -2,17 +2,16 @@
 
 namespace Porthole\Page;
 
-use Porthole\Event\AuditLogPageFetchedEvent;
-use Porthole\Event\AuditLogsFetchedEvent;
-use Porthole\Event\CsvWrittenEvent;
-use Porthole\Event\ReportBuiltEvent;
+use Porthole\Background\BackgroundProcess;
+use Porthole\Background\Event\BackgroundTaskCompletedEvent;
+use Porthole\Background\Event\BackgroundTaskFailedEvent;
+use Porthole\Background\Event\BackgroundTaskProgressEvent;
 use Porthole\Harbor\HarborContext;
 use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
 use Porthole\Tui\PageInterface;
 use Porthole\UseCase\GenerateReportCommand as GenerateReportUseCase;
 use Porthole\UseCase\GenerateReportHandler;
-use Revolt\EventLoop;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Tui\Event\InputEvent;
 use Symfony\Component\Tui\Input\Key;
@@ -28,6 +27,8 @@ final class BuildReportPage implements PageInterface
 {
     private const string MODE_IMAGES = 'images';
     private const string MODE_USERS = 'users';
+
+    private ?BackgroundProcess $backgroundProcess = null;
 
     public function __construct(
         private readonly HarborContext $context,
@@ -109,6 +110,13 @@ final class BuildReportPage implements PageInterface
             }
 
             if ('running' === $phase) {
+                if ($keybindings->matches($data, 'back')) {
+                    $this->backgroundProcess?->kill();
+                    $navigator->navigateTo(new HomePage($this->context, $this->handler, $this->reader));
+                    $event->stopPropagation();
+
+                    return;
+                }
                 $event->stopPropagation();
 
                 return;
@@ -171,7 +179,7 @@ final class BuildReportPage implements PageInterface
                 );
 
                 $phase = 'running';
-                $this->startProgress($container, $command, static function () use (&$phase): void {
+                $this->startProgress($container, $command, $navigator, static function () use (&$phase): void {
                     $phase = 'finished';
                 });
                 $event->stopPropagation();
@@ -184,6 +192,7 @@ final class BuildReportPage implements PageInterface
     private function startProgress(
         ContainerWidget $container,
         GenerateReportUseCase $command,
+        Navigator $navigator,
         \Closure $onFinished,
     ): void {
         $container->clear();
@@ -208,95 +217,101 @@ final class BuildReportPage implements PageInterface
         $container->add($stepsContainer);
 
         $startTime = microtime(true);
-        $capturedOutputPath = '';
-        $capturedRowCount = 0;
-
-        $dispatcher = new EventDispatcher();
+        $capturedPath = '';
+        $capturedRows = 0;
         $connectedMarked = false;
 
+        $dispatcher = new EventDispatcher();
+
         $dispatcher->addListener(
-            AuditLogPageFetchedEvent::class,
-            function (AuditLogPageFetchedEvent $e) use ($steps, &$connectedMarked): void {
-                if (!$connectedMarked) {
-                    $connectedMarked = true;
-                    $steps['connect']->setText('[✓] Connected to Harbor');
-                }
-                $steps['fetch']->setText(sprintf('[⟳] Fetching audit log (page %d)', $e->page));
-            }
-        );
-        $dispatcher->addListener(
-            AuditLogsFetchedEvent::class,
-            fn (AuditLogsFetchedEvent $e) => $steps['fetch']->setText(
-                sprintf('[✓] Fetched audit log (%d entries)', $e->totalEntries)
-            )
-        );
-        $dispatcher->addListener(
-            ReportBuiltEvent::class,
-            fn (ReportBuiltEvent $e) => $steps['build']->setText('[✓] Built report')
-        );
-        $dispatcher->addListener(
-            CsvWrittenEvent::class,
-            function (CsvWrittenEvent $e) use ($steps, &$capturedOutputPath, &$capturedRowCount): void {
-                $steps['write']->setText('[✓] Written CSV');
-                $capturedOutputPath = $e->outputPath;
-                $capturedRowCount = $e->rowCount;
-            }
-        );
+            BackgroundTaskProgressEvent::class,
+            function (BackgroundTaskProgressEvent $e) use (
+                $steps,
+                $navigator,
+                &$connectedMarked,
+                &$capturedPath,
+                &$capturedRows,
+            ): void {
+                $typeValue = $e->data['type'] ?? null;
+                $type = is_string($typeValue) ? $typeValue : '';
 
-        EventLoop::defer(function () use (
-            $steps,
-            $command,
-            $dispatcher,
-            $container,
-            $startTime,
-            $onFinished,
-            &$capturedOutputPath,
-            &$capturedRowCount,
-        ): void {
-            $steps['connect']->setText('[⟳] Connecting to Harbor');
-
-            try {
-                $this->handler->handle($command, $dispatcher);
-
-                EventLoop::defer(function () use (
-                    $container,
-                    $startTime,
-                    $onFinished,
-                    &$capturedOutputPath,
-                    &$capturedRowCount,
-                ): void {
-                    $elapsed = round(microtime(true) - $startTime, 1);
-
-                    $summary = new ContainerWidget();
-                    $summary->setStyle(new Style(direction: Direction::Vertical, gap: 0));
-                    $summary->addStyleClass('summary');
-                    $summary->add(new TextWidget(sprintf('Output  %s', $capturedOutputPath)));
-                    $summary->add(new TextWidget(sprintf('Rows    %s', number_format((int) $capturedRowCount, 0, '.', ' '))));
-                    $summary->add(new TextWidget(sprintf('Time    %ss', $elapsed)));
-                    $summary->add(new TextWidget(''));
-                    $summary->add(new TextWidget('Press Enter to go back'));
-                    $container->add($summary);
-
-                    $onFinished();
-                });
-            } catch (\Throwable $e) {
-                if (str_contains($e->getMessage(), '401') || str_contains($e->getMessage(), 'auth')) {
-                    $steps['connect']->setText(sprintf('[✗] Connecting to Harbor — %s', $e->getMessage()));
-                } else {
-                    $steps['fetch']->setText(sprintf('[✗] Fetching audit log — %s', $e->getMessage()));
-                    $steps['connect']->setText('[✓] Connected to Harbor');
+                if ('page_fetched' === $type) {
+                    if (!$connectedMarked) {
+                        $connectedMarked = true;
+                        $steps['connect']->setText('[✓] Connected to Harbor');
+                    }
+                    $rawPage = $e->data['page'] ?? 0;
+                    $steps['fetch']->setText(sprintf('[⟳] Fetching audit log (page %d)', is_int($rawPage) ? $rawPage : 0));
+                } elseif ('logs_fetched' === $type) {
+                    $rawTotal = $e->data['total'] ?? 0;
+                    $steps['fetch']->setText(sprintf('[✓] Fetched audit log (%d entries)', is_int($rawTotal) ? $rawTotal : 0));
+                } elseif ('report_built' === $type) {
+                    $steps['build']->setText('[✓] Built report');
+                } elseif ('csv_written' === $type) {
+                    $steps['write']->setText('[✓] Written CSV');
+                    $pathValue = $e->data['path'] ?? null;
+                    $capturedPath = is_string($pathValue) ? $pathValue : '';
+                    $rawRows = $e->data['rows'] ?? 0;
+                    $capturedRows = is_int($rawRows) ? $rawRows : 0;
                 }
 
+                $navigator->requestPageRender();
+            }
+        );
+
+        $dispatcher->addListener(
+            BackgroundTaskCompletedEvent::class,
+            function () use ($container, $startTime, $onFinished, $navigator, &$capturedPath, &$capturedRows): void {
+                $elapsed = round(microtime(true) - $startTime, 1);
                 $summary = new ContainerWidget();
                 $summary->setStyle(new Style(direction: Direction::Vertical, gap: 0));
                 $summary->addStyleClass('summary');
-                $summary->add(new TextWidget(sprintf('Error: %s', $e->getMessage())));
+                $summary->add(new TextWidget(sprintf('Output  %s', $capturedPath)));
+                $summary->add(new TextWidget(sprintf('Rows    %s', number_format($capturedRows, 0, '.', ' '))));
+                $summary->add(new TextWidget(sprintf('Time    %ss', $elapsed)));
                 $summary->add(new TextWidget(''));
                 $summary->add(new TextWidget('Press Enter to go back'));
                 $container->add($summary);
-
                 $onFinished();
+                $navigator->requestPageRender();
             }
-        });
+        );
+
+        $dispatcher->addListener(
+            BackgroundTaskFailedEvent::class,
+            function (BackgroundTaskFailedEvent $e) use ($container, $onFinished, $navigator): void {
+                $summary = new ContainerWidget();
+                $summary->setStyle(new Style(direction: Direction::Vertical, gap: 0));
+                $summary->addStyleClass('summary');
+                $summary->add(new TextWidget(sprintf('Error: %s', $e->message)));
+                $summary->add(new TextWidget(''));
+                $summary->add(new TextWidget('Press Enter to go back'));
+                $container->add($summary);
+                $onFinished();
+                $navigator->requestPageRender();
+            }
+        );
+
+        $scriptFilename = $_SERVER['SCRIPT_FILENAME'] ?? '';
+        $this->backgroundProcess = new BackgroundProcess(
+            command: [PHP_BINARY, is_string($scriptFilename) ? $scriptFilename : '', 'generate-report:worker'],
+            dispatcher: $dispatcher,
+            timeoutSeconds: 300,
+        );
+
+        $this->backgroundProcess->start([
+            'harborUrl' => $command->harborUrl,
+            'token' => $command->token,
+            'username' => $command->username,
+            'mode' => $command->mode,
+            'from' => $command->from?->format('Y-m-d'),
+            'to' => $command->to?->format('Y-m-d'),
+            'outputPath' => $command->outputPath,
+            'verifySsl' => $command->verifySsl,
+        ]);
+
+        // Show connecting spinner immediately — before first page_fetched arrives
+        $steps['connect']->setText('[⟳] Connecting to Harbor');
+        $navigator->requestPageRender();
     }
 }
