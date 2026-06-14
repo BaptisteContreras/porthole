@@ -4,8 +4,10 @@ namespace Porthole\Result;
 
 use Porthole\Report\ImageReport;
 use Porthole\Report\ImageReportRow;
+use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 
+#[AutoconfigureTag('csv.reader_strategy')]
 final class ImageReportReaderStrategy implements ReportReaderStrategyInterface
 {
     public function __construct(private readonly DenormalizerInterface $denormalizer)

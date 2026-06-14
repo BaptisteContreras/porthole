@@ -14,8 +14,10 @@ use Porthole\Report\ReportBuilder;
 use Porthole\Report\UserReport;
 use Porthole\Report\UserReportRow;
 use Porthole\Result\CsvWriter;
+use Symfony\Component\DependencyInjection\Attribute\AsAlias;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
+#[AsAlias(GenerateReportHandlerInterface::class)]
 final class GenerateReportHandler implements GenerateReportHandlerInterface
 {
     public function __construct(

@@ -4,6 +4,7 @@ namespace Porthole\Result;
 
 use Porthole\Report\ImageReport;
 use Porthole\Report\UserReport;
+use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 use Symfony\Component\Serializer\Encoder\CsvEncoder;
 use Symfony\Component\Serializer\Encoder\DecoderInterface;
 
@@ -14,6 +15,7 @@ final class CsvReader
      */
     public function __construct(
         private readonly DecoderInterface $decoder,
+        #[AutowireIterator('csv.reader_strategy')]
         private readonly iterable $strategies,
     ) {
     }

@@ -6,6 +6,7 @@ use Porthole\Page\CredentialsPage;
 use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
 use Porthole\UseCase\GenerateReportHandler;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -18,6 +19,7 @@ use Symfony\Component\Tui\Style\StyleSheet;
 use Symfony\Component\Tui\Tui;
 use Symfony\Component\Tui\Widget\ContainerWidget;
 
+#[AsCommand('start')]
 final class StartCommand extends Command
 {
     public function __construct(

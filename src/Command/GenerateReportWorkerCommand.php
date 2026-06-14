@@ -8,11 +8,13 @@ use Porthole\Event\CsvWrittenEvent;
 use Porthole\Event\ReportBuiltEvent;
 use Porthole\UseCase\GenerateReportCommand;
 use Porthole\UseCase\GenerateReportHandlerInterface;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 
+#[AsCommand('generate-report:worker')]
 final class GenerateReportWorkerCommand extends Command
 {
     /** @var resource */

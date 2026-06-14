@@ -3,47 +3,17 @@
 
 require_once __DIR__.'/../vendor/autoload.php';
 
-use Porthole\Command\GenerateReportWorkerCommand;
-use Porthole\Command\StartCommand;
-use Porthole\Harbor\HarborApiClient;
-use Porthole\Report\ReportBuilder;
-use Porthole\Result\CsvReader;
-use Porthole\Result\CsvWriter;
-use Porthole\Result\ImageReportReaderStrategy;
-use Porthole\Result\UserReportReaderStrategy;
-use Porthole\UseCase\GenerateReportHandler;
+use Porthole\Kernel;
 use Symfony\Component\Console\Application;
-use Symfony\Component\HttpClient\HttpClient;
-use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
-use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
-use Symfony\Component\Serializer\Encoder\CsvEncoder;
-use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
-use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
-use Symfony\Component\Serializer\NameConverter\MetadataAwareNameConverter;
-use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
-use Symfony\Component\Serializer\Serializer;
+use Symfony\Component\Console\CommandLoader\CommandLoaderInterface;
 
-$classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
-$nameConverter = new MetadataAwareNameConverter($classMetadataFactory);
-$propertyInfo = new PropertyInfoExtractor(typeExtractors: [new ReflectionExtractor()]);
-$serializer = new Serializer(
-    [new ObjectNormalizer(classMetadataFactory: $classMetadataFactory, nameConverter: $nameConverter, propertyTypeExtractor: $propertyInfo)],
-    [new CsvEncoder()]
-);
-
-$handler = new GenerateReportHandler(
-    new HarborApiClient(HttpClient::create()),
-    new ReportBuilder(),
-    new CsvWriter($serializer),
-);
-
-$reader = new CsvReader($serializer, [
-    new ImageReportReaderStrategy($serializer),
-    new UserReportReaderStrategy($serializer),
-]);
+$kernel = new Kernel('prod', false);
+$kernel->boot();
+$container = $kernel->getContainer();
 
 $app = new Application('porthole', '0.1.0');
-$app->addCommand(new StartCommand($handler, $reader));
-$app->addCommand(new GenerateReportWorkerCommand($handler));
+/** @var CommandLoaderInterface $loader */
+$loader = $container->get('console.command_loader');
+$app->setCommandLoader($loader);
 $app->setDefaultCommand('start');
 $app->run();

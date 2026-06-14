@@ -4,8 +4,10 @@ namespace Porthole\Result;
 
 use Porthole\Report\UserReport;
 use Porthole\Report\UserReportRow;
+use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 
+#[AutoconfigureTag('csv.reader_strategy')]
 final class UserReportReaderStrategy implements ReportReaderStrategyInterface
 {
     public function __construct(private readonly DenormalizerInterface $denormalizer)
