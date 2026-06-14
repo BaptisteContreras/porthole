@@ -10,19 +10,10 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 final class BackgroundProcess
 {
-    /** @var resource|null */
-    private mixed $process = null;
-
-    /** @var resource|null */
-    private mixed $stdout = null;
-
+    private ?ProcessSocket $socket = null;
     private ?string $timerId = null;
-
-    private string $lineBuffer = '';
-
     private bool $started = false;
-
-    private bool $shutdownRegistered = false;
+    private float $startTime = 0.0;
 
     /**
      * @param non-empty-list<string> $command
@@ -40,83 +31,42 @@ final class BackgroundProcess
     public function start(array $taskPayload): void
     {
         if ($this->started) {
-            throw new \LogicException('BackgroundProcess is already started. Create a new instance to run another task.');
+            throw new \LogicException('BackgroundProcess already started. Create a new instance to run another task.');
         }
-
         $this->started = true;
 
         try {
-            $encoded = json_encode($taskPayload, JSON_THROW_ON_ERROR);
+            $encoded = json_encode($taskPayload, \JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
             $this->dispatcher->dispatch(new BackgroundTaskFailedEvent('Failed to encode task payload: '.$e->getMessage()));
 
             return;
         }
 
-        $pipes = [];
-        $process = proc_open(
-            command: $this->command,
-            descriptor_spec: [
-                0 => ['pipe', 'r'],
-                1 => ['pipe', 'w'],
-                2 => STDERR,
-            ],
-            pipes: $pipes,
-        );
-
-        if (false === $process) {
-            $this->dispatcher->dispatch(new BackgroundTaskFailedEvent('Failed to spawn worker process'));
+        try {
+            $socket = new ProcessSocket($this->command);
+            $socket->write($encoded);
+        } catch (\RuntimeException $e) {
+            $this->dispatcher->dispatch(new BackgroundTaskFailedEvent($e->getMessage()));
 
             return;
         }
 
-        $this->process = $process;
-        $this->stdout = $pipes[1];
-        stream_set_blocking($pipes[1], false);
+        $this->socket = $socket;
+        $this->startTime = microtime(true);
 
-        fwrite($pipes[0], $encoded);
-        fclose($pipes[0]);
-
-        if (!$this->shutdownRegistered) {
-            $this->shutdownRegistered = true;
-            $stdoutPipe = $pipes[1];
-            register_shutdown_function(function () use ($process, $stdoutPipe): void {
-                if (!is_resource($process)) {
-                    return;
-                }
-                if (proc_get_status($process)['running']) {
-                    proc_terminate($process);
-                    if (is_resource($stdoutPipe)) {
-                        fclose($stdoutPipe);
-                    }
-                    proc_close($process);
-                }
-            });
-        }
-
-        $startTime = microtime(true);
-
-        $this->timerId = EventLoop::repeat(0.05, function (string $timerId) use ($startTime): void {
-            // Assign to locals so PHPStan can narrow types; properties may be null after terminate()
-            $stdout = $this->stdout;
-            $process = $this->process;
-            if (null === $stdout || null === $process) {
+        $this->timerId = EventLoop::repeat(0.05, function (): void {
+            $socket = $this->socket;
+            if (null === $socket) {
                 return;
             }
 
-            $chunk = fread($stdout, 4096);
-            if (false !== $chunk && '' !== $chunk) {
-                $this->lineBuffer .= $chunk;
-                while (false !== ($pos = strpos($this->lineBuffer, "\n"))) {
-                    $line = substr($this->lineBuffer, 0, $pos);
-                    $this->lineBuffer = substr($this->lineBuffer, $pos + 1);
-                    if ('' === $line) {
-                        continue;
-                    }
-                    $event = json_decode($line, true);
-                    if (!is_array($event)) {
-                        continue;
-                    }
+            while (null !== ($line = $socket->readLine())) {
+                if ('' === $line) {
+                    continue;
+                }
+                $event = json_decode($line, true);
+                if (is_array($event)) {
                     /** @var array<string, mixed> $event */
                     if ($this->dispatchProgressOrTerminal($event)) {
                         return;
@@ -124,42 +74,13 @@ final class BackgroundProcess
                 }
             }
 
-            if (microtime(true) - $startTime > $this->timeoutSeconds) {
-                proc_terminate($process);
-                $this->terminate(
-                    new BackgroundTaskFailedEvent(sprintf('Worker timed out after %ds', $this->timeoutSeconds)),
-                );
+            if (microtime(true) - $this->startTime > $this->timeoutSeconds) {
+                $this->terminate(new BackgroundTaskFailedEvent(sprintf('Worker timed out after %ds', $this->timeoutSeconds)));
 
                 return;
             }
 
-            if (feof($stdout) && !proc_get_status($process)['running']) {
-                // Drain any newline-terminated lines buffered before the process exited
-                while (false !== ($pos = strpos($this->lineBuffer, "\n"))) {
-                    $line = substr($this->lineBuffer, 0, $pos);
-                    $this->lineBuffer = substr($this->lineBuffer, $pos + 1);
-                    if ('' === $line) {
-                        continue;
-                    }
-                    $event = json_decode($line, true);
-                    if (is_array($event)) {
-                        /** @var array<string, mixed> $event */
-                        if ($this->dispatchProgressOrTerminal($event)) {
-                            return;
-                        }
-                    }
-                }
-                // Attempt to parse a partial line with no trailing newline (child crashed mid-write)
-                $remaining = trim($this->lineBuffer);
-                if ('' !== $remaining) {
-                    $event = json_decode($remaining, true);
-                    if (is_array($event)) {
-                        /** @var array<string, mixed> $event */
-                        if ($this->dispatchProgressOrTerminal($event)) {
-                            return;
-                        }
-                    }
-                }
+            if ($socket->isDone()) {
                 $this->terminate(new BackgroundTaskFailedEvent('Worker process exited unexpectedly'));
             }
         });
@@ -171,11 +92,8 @@ final class BackgroundProcess
             EventLoop::cancel($this->timerId);
             $this->timerId = null;
         }
-        $process = $this->process;
-        if (null !== $process && proc_get_status($process)['running']) {
-            proc_terminate($process, 9);
-        }
-        $this->cleanup();
+        $this->socket?->close();
+        $this->socket = null;
     }
 
     private function terminate(object $event): void
@@ -183,28 +101,12 @@ final class BackgroundProcess
         \assert(null !== $this->timerId, 'terminate() called without an active timer');
         EventLoop::cancel($this->timerId);
         $this->timerId = null;
-        $this->cleanup();
+        $this->socket?->close();
+        $this->socket = null;
         $this->dispatcher->dispatch($event);
     }
 
-    private function cleanup(): void
-    {
-        $stdout = $this->stdout;
-        if (null !== $stdout) {
-            fclose($stdout);
-            $this->stdout = null;
-        }
-        $process = $this->process;
-        if (null !== $process) {
-            proc_close($process);
-            $this->process = null;
-        }
-    }
-
     /**
-     * Dispatches a progress or terminal event from a decoded JSON object.
-     * Returns true if a terminal event (done/error) was dispatched and the caller should return.
-     *
      * @param array<string, mixed> $event
      */
     private function dispatchProgressOrTerminal(array $event): bool

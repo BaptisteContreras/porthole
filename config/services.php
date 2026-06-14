@@ -1,6 +1,8 @@
 <?php
 
+use Porthole\Background\BackgroundProcessManager;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
 use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
@@ -13,6 +15,7 @@ use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\Serializer;
 use Symfony\Component\Serializer\SerializerInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
@@ -43,6 +46,13 @@ return static function (ContainerConfigurator $container): void {
             '../src/Tui/Navigator.php',
             '../src/UseCase/GenerateReportCommand.php',
         ]);
+
+    // EventDispatcher: vendor class, registered explicitly for BackgroundProcessManager
+    $services->set(EventDispatcher::class);
+    $container->services()->alias(EventDispatcherInterface::class, EventDispatcher::class);
+
+    // BackgroundProcessManager: src/Background/ is excluded from auto-discovery
+    $services->set(BackgroundProcessManager::class);
 
     // HttpClient: vendor class, factory required
     $services->set(HttpClientInterface::class)

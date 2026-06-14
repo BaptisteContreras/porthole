@@ -2,6 +2,7 @@
 
 namespace Porthole\Page;
 
+use Porthole\Background\BackgroundProcessManager;
 use Porthole\Harbor\HarborContext;
 use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
@@ -21,6 +22,7 @@ final class HomePage implements PageInterface
         private readonly HarborContext $context,
         private readonly GenerateReportHandler $handler,
         private readonly ?CsvReader $reader = null,
+        private readonly ?BackgroundProcessManager $manager = null,
     ) {
     }
 
@@ -54,13 +56,13 @@ final class HomePage implements PageInterface
             }
 
             if ('build_report' === $item['value']) {
-                $navigator->navigateTo(new BuildReportPage($this->context, $this->handler, $this->reader));
+                $navigator->navigateTo(new BuildReportPage($this->context, $this->handler, $this->reader, $this->manager));
 
                 return;
             }
 
             if ('credentials' === $item['value']) {
-                $navigator->navigateTo(new CredentialsPage($this->handler, $this->context, $this->reader));
+                $navigator->navigateTo(new CredentialsPage($this->handler, $this->context, $this->reader, $this->manager));
 
                 return;
             }

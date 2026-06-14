@@ -54,7 +54,7 @@ final class HarborApiClient
 
             /** @var list<array{username: string, resource: string, resource_type: string, operation: string, op_time: string}> $data */
             $data = $response->toArray();
-
+            sleep(1);
             yield $page => array_map(
                 [AuditLogBuilder::class, 'buildFromApiResponseItem'],
                 $data,

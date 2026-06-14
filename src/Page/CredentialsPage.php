@@ -2,6 +2,7 @@
 
 namespace Porthole\Page;
 
+use Porthole\Background\BackgroundProcessManager;
 use Porthole\Harbor\HarborContext;
 use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
@@ -23,6 +24,7 @@ final class CredentialsPage implements PageInterface
         private readonly GenerateReportHandler $handler,
         private readonly ?HarborContext $context = null,
         private readonly ?CsvReader $reader = null,
+        private readonly ?BackgroundProcessManager $manager = null,
     ) {
     }
 
@@ -152,6 +154,7 @@ final class CredentialsPage implements PageInterface
                     ),
                     $this->handler,
                     $this->reader,
+                    $this->manager,
                 ));
                 $event->stopPropagation();
             }

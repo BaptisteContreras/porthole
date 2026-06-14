@@ -2,6 +2,7 @@
 
 namespace Porthole\Command;
 
+use Porthole\Background\BackgroundProcessManager;
 use Porthole\Page\CredentialsPage;
 use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
@@ -25,6 +26,7 @@ final class StartCommand extends Command
     public function __construct(
         private readonly GenerateReportHandler $handler,
         private readonly CsvReader $reader,
+        private readonly BackgroundProcessManager $manager,
     ) {
         parent::__construct();
     }
@@ -56,7 +58,7 @@ final class StartCommand extends Command
         });
 
         $navigator = new Navigator($tui, $root);
-        $navigator->navigateTo(new CredentialsPage($this->handler, reader: $this->reader));
+        $navigator->navigateTo(new CredentialsPage($this->handler, reader: $this->reader, manager: $this->manager));
 
         $tui->run();
 

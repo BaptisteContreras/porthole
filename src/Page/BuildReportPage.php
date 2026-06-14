@@ -2,17 +2,17 @@
 
 namespace Porthole\Page;
 
-use Porthole\Background\BackgroundProcess;
+use Porthole\Background\BackgroundProcessManager;
 use Porthole\Background\Event\BackgroundTaskCompletedEvent;
 use Porthole\Background\Event\BackgroundTaskFailedEvent;
 use Porthole\Background\Event\BackgroundTaskProgressEvent;
+use Porthole\Background\ProcessId;
 use Porthole\Harbor\HarborContext;
 use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
 use Porthole\Tui\PageInterface;
 use Porthole\UseCase\GenerateReportCommand as GenerateReportUseCase;
 use Porthole\UseCase\GenerateReportHandler;
-use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Tui\Event\InputEvent;
 use Symfony\Component\Tui\Input\Key;
 use Symfony\Component\Tui\Input\Keybindings;
@@ -28,12 +28,13 @@ final class BuildReportPage implements PageInterface
     private const string MODE_IMAGES = 'images';
     private const string MODE_USERS = 'users';
 
-    private ?BackgroundProcess $backgroundProcess = null;
+    private ?ProcessId $processId = null;
 
     public function __construct(
         private readonly HarborContext $context,
         private readonly GenerateReportHandler $handler,
         private readonly ?CsvReader $reader = null,
+        private readonly ?BackgroundProcessManager $manager = null,
     ) {
     }
 
@@ -102,7 +103,7 @@ final class BuildReportPage implements PageInterface
 
             if ('finished' === $phase) {
                 if ($keybindings->matches($data, 'submit')) {
-                    $navigator->navigateTo(new HomePage($this->context, $this->handler, $this->reader));
+                    $navigator->navigateTo(new HomePage($this->context, $this->handler, $this->reader, $this->manager));
                     $event->stopPropagation();
                 }
 
@@ -111,8 +112,11 @@ final class BuildReportPage implements PageInterface
 
             if ('running' === $phase) {
                 if ($keybindings->matches($data, 'back')) {
-                    $this->backgroundProcess?->kill();
-                    $navigator->navigateTo(new HomePage($this->context, $this->handler, $this->reader));
+                    if (null !== $this->processId && null !== $this->manager) {
+                        $this->manager->stop($this->processId);
+                        $this->processId = null;
+                    }
+                    $navigator->navigateTo(new HomePage($this->context, $this->handler, $this->reader, $this->manager));
                     $event->stopPropagation();
 
                     return;
@@ -123,7 +127,7 @@ final class BuildReportPage implements PageInterface
             }
 
             if ($keybindings->matches($data, 'back')) {
-                $navigator->navigateTo(new HomePage($this->context, $this->handler, $this->reader));
+                $navigator->navigateTo(new HomePage($this->context, $this->handler, $this->reader, $this->manager));
                 $event->stopPropagation();
 
                 return;
@@ -195,123 +199,94 @@ final class BuildReportPage implements PageInterface
         Navigator $navigator,
         \Closure $onFinished,
     ): void {
+        $taskWidget = new BackgroundTaskWidget($navigator, 'Build report', [
+            ['key' => 'connect', 'label' => 'Connecting to Harbor'],
+            ['key' => 'fetch', 'label' => 'Fetching audit log'],
+            ['key' => 'build', 'label' => 'Building report'],
+            ['key' => 'write', 'label' => 'Writing CSV'],
+        ]);
+
         $container->clear();
-
-        $title = new TextWidget('Build report');
-        $title->addStyleClass('font-big text-cyan-400 bold');
-
-        $steps = [
-            'connect' => new TextWidget('[ ] Connecting to Harbor'),
-            'fetch' => new TextWidget('[ ] Fetching audit log'),
-            'build' => new TextWidget('[ ] Building report'),
-            'write' => new TextWidget('[ ] Writing CSV'),
-        ];
-
-        $stepsContainer = new ContainerWidget();
-        $stepsContainer->setStyle(new Style(direction: Direction::Vertical));
-        foreach ($steps as $step) {
-            $stepsContainer->add($step);
-        }
-
-        $container->add($title);
-        $container->add($stepsContainer);
+        $container->add($taskWidget->getWidget());
 
         $startTime = microtime(true);
         $capturedPath = '';
         $capturedRows = 0;
-        $connectedMarked = false;
-
-        $dispatcher = new EventDispatcher();
-
-        $dispatcher->addListener(
-            BackgroundTaskProgressEvent::class,
-            function (BackgroundTaskProgressEvent $e) use (
-                $steps,
-                $navigator,
-                &$connectedMarked,
-                &$capturedPath,
-                &$capturedRows,
-            ): void {
-                $typeValue = $e->data['type'] ?? null;
-                $type = is_string($typeValue) ? $typeValue : '';
-
-                if ('page_fetched' === $type) {
-                    if (!$connectedMarked) {
-                        $connectedMarked = true;
-                        $steps['connect']->setText('[✓] Connected to Harbor');
-                    }
-                    $rawPage = $e->data['page'] ?? 0;
-                    $steps['fetch']->setText(sprintf('[⟳] Fetching audit log (page %d)', is_int($rawPage) ? $rawPage : 0));
-                } elseif ('logs_fetched' === $type) {
-                    $rawTotal = $e->data['total'] ?? 0;
-                    $steps['fetch']->setText(sprintf('[✓] Fetched audit log (%d entries)', is_int($rawTotal) ? $rawTotal : 0));
-                } elseif ('report_built' === $type) {
-                    $steps['build']->setText('[✓] Built report');
-                } elseif ('csv_written' === $type) {
-                    $steps['write']->setText('[✓] Written CSV');
-                    $pathValue = $e->data['path'] ?? null;
-                    $capturedPath = is_string($pathValue) ? $pathValue : '';
-                    $rawRows = $e->data['rows'] ?? 0;
-                    $capturedRows = is_int($rawRows) ? $rawRows : 0;
-                }
-
-                $navigator->requestPageRender();
-            }
-        );
-
-        $dispatcher->addListener(
-            BackgroundTaskCompletedEvent::class,
-            function () use ($container, $startTime, $onFinished, $navigator, &$capturedPath, &$capturedRows): void {
-                $elapsed = round(microtime(true) - $startTime, 1);
-                $summary = new ContainerWidget();
-                $summary->setStyle(new Style(direction: Direction::Vertical, gap: 0));
-                $summary->addStyleClass('summary');
-                $summary->add(new TextWidget(sprintf('Output  %s', $capturedPath)));
-                $summary->add(new TextWidget(sprintf('Rows    %s', number_format($capturedRows, 0, '.', ' '))));
-                $summary->add(new TextWidget(sprintf('Time    %ss', $elapsed)));
-                $summary->add(new TextWidget(''));
-                $summary->add(new TextWidget('Press Enter to go back'));
-                $container->add($summary);
-                $onFinished();
-                $navigator->requestPageRender();
-            }
-        );
-
-        $dispatcher->addListener(
-            BackgroundTaskFailedEvent::class,
-            function (BackgroundTaskFailedEvent $e) use ($container, $onFinished, $navigator): void {
-                $summary = new ContainerWidget();
-                $summary->setStyle(new Style(direction: Direction::Vertical, gap: 0));
-                $summary->addStyleClass('summary');
-                $summary->add(new TextWidget(sprintf('Error: %s', $e->message)));
-                $summary->add(new TextWidget(''));
-                $summary->add(new TextWidget('Press Enter to go back'));
-                $container->add($summary);
-                $onFinished();
-                $navigator->requestPageRender();
-            }
-        );
+        $connectedDone = false;
 
         $scriptFilename = $_SERVER['SCRIPT_FILENAME'] ?? '';
-        $this->backgroundProcess = new BackgroundProcess(
-            command: [PHP_BINARY, is_string($scriptFilename) ? $scriptFilename : '', 'generate-report:worker'],
-            dispatcher: $dispatcher,
-            timeoutSeconds: 300,
-        );
 
-        $this->backgroundProcess->start([
-            'harborUrl' => $command->harborUrl,
-            'token' => $command->token,
-            'username' => $command->username,
-            'mode' => $command->mode,
-            'from' => $command->from?->format('Y-m-d'),
-            'to' => $command->to?->format('Y-m-d'),
-            'outputPath' => $command->outputPath,
-            'verifySsl' => $command->verifySsl,
-        ]);
+        if (null !== $this->manager) {
+            $this->processId = $this->manager->start(
+                label: 'Build report',
+                command: [PHP_BINARY, is_string($scriptFilename) ? $scriptFilename : '', 'generate-report:worker'],
+                payload: [
+                    'harborUrl' => $command->harborUrl,
+                    'token' => $command->token,
+                    'username' => $command->username,
+                    'mode' => $command->mode,
+                    'from' => $command->from?->format('Y-m-d'),
+                    'to' => $command->to?->format('Y-m-d'),
+                    'outputPath' => $command->outputPath,
+                    'verifySsl' => $command->verifySsl,
+                ],
+                timeoutSeconds: 300,
+            );
 
-        // Show connecting spinner immediately — before first page_fetched arrives
-        $steps['connect']->setText('[⟳] Connecting to Harbor');
-        $navigator->requestPageRender();
+            $this->manager->onProcessProgress(
+                $this->processId,
+                function (BackgroundTaskProgressEvent $event) use ($taskWidget, &$connectedDone, &$capturedPath, &$capturedRows): void {
+                    $typeValue = $event->data['type'] ?? null;
+                    $type = is_string($typeValue) ? $typeValue : '';
+
+                    if ('page_fetched' === $type) {
+                        if (!$connectedDone) {
+                            $connectedDone = true;
+                            $taskWidget->setStepDone('connect', 'Connected to Harbor');
+                        }
+                        $rawPage = $event->data['page'] ?? 0;
+                        $taskWidget->setStepRunning('fetch', sprintf('Fetching audit log (page %d)', is_int($rawPage) ? $rawPage : 0));
+                    } elseif ('logs_fetched' === $type) {
+                        $rawTotal = $event->data['total'] ?? 0;
+                        $taskWidget->setStepDone('fetch', sprintf('Fetched audit log (%d entries)', is_int($rawTotal) ? $rawTotal : 0));
+                        $taskWidget->setStepRunning('build');
+                    } elseif ('report_built' === $type) {
+                        $taskWidget->setStepDone('build', 'Report built');
+                        $taskWidget->setStepRunning('write');
+                    } elseif ('csv_written' === $type) {
+                        $pathValue = $event->data['path'] ?? null;
+                        $capturedPath = is_string($pathValue) ? $pathValue : '';
+                        $rawRows = $event->data['rows'] ?? 0;
+                        $capturedRows = is_int($rawRows) ? $rawRows : 0;
+                        $taskWidget->setStepDone('write', 'CSV written');
+                    }
+                },
+            );
+
+            $this->manager->onProcessCompleted(
+                $this->processId,
+                function (BackgroundTaskCompletedEvent $event) use ($taskWidget, $startTime, $onFinished, &$capturedPath, &$capturedRows): void {
+                    $elapsed = round(microtime(true) - $startTime, 1);
+                    $taskWidget->setComplete(
+                        sprintf('Output  %s', $capturedPath),
+                        sprintf('Rows    %s', number_format($capturedRows, 0, '.', ' ')),
+                        sprintf('Time    %ss', $elapsed),
+                        '',
+                        'Press Enter to go back',
+                    );
+                    $onFinished();
+                },
+            );
+
+            $this->manager->onProcessFailed(
+                $this->processId,
+                function (BackgroundTaskFailedEvent $event) use ($taskWidget, $onFinished): void {
+                    $taskWidget->setFailed($event->message);
+                    $onFinished();
+                },
+            );
+        }
+
+        $taskWidget->setStepRunning('connect');
     }
 }
