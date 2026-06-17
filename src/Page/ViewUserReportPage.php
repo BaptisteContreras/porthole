@@ -62,12 +62,13 @@ final class ViewUserReportPage extends AbstractViewReportPage
 
         $userFilter = '';
         $tagFilter = '';
+        $imageFilter = '';
 
         $filterInput = new InputWidget();
         $filterInput->setPrompt('Filter user: > ');
-        $filterInput->onChange(function (ChangeEvent $event) use ($dataList, $hint, $navigator, $hintText, $view, &$userFilter, &$tagFilter): void {
+        $filterInput->onChange(function (ChangeEvent $event) use ($dataList, $hint, $navigator, $hintText, $view, &$userFilter, &$tagFilter, &$imageFilter): void {
             $userFilter = $event->getValue();
-            $items = $this->filterRows($userFilter, $tagFilter, $view);
+            $items = $this->filterRows($userFilter, $tagFilter, $imageFilter, $view);
             $dataList->setItems($items);
             $hint->setText($hintText(count($items)));
             $navigator->requestPageRender();
@@ -76,14 +77,25 @@ final class ViewUserReportPage extends AbstractViewReportPage
 
         $tagFilterInput = new InputWidget();
         $tagFilterInput->setPrompt('Filter tag: > ');
-        $tagFilterInput->onChange(function (ChangeEvent $event) use ($dataList, $hint, $navigator, $hintText, $view, &$userFilter, &$tagFilter): void {
+        $tagFilterInput->onChange(function (ChangeEvent $event) use ($dataList, $hint, $navigator, $hintText, $view, &$userFilter, &$tagFilter, &$imageFilter): void {
             $tagFilter = $event->getValue();
-            $items = $this->filterRows($userFilter, $tagFilter, $view);
+            $items = $this->filterRows($userFilter, $tagFilter, $imageFilter, $view);
             $dataList->setItems($items);
             $hint->setText($hintText(count($items)));
             $navigator->requestPageRender();
         });
         $filterContainer->add($tagFilterInput);
+
+        $imageFilterInput = new InputWidget();
+        $imageFilterInput->setPrompt('Filter image: > ');
+        $imageFilterInput->onChange(function (ChangeEvent $event) use ($dataList, $hint, $navigator, $hintText, $view, &$userFilter, &$tagFilter, &$imageFilter): void {
+            $imageFilter = $event->getValue();
+            $items = $this->filterRows($userFilter, $tagFilter, $imageFilter, $view);
+            $dataList->setItems($items);
+            $hint->setText($hintText(count($items)));
+            $navigator->requestPageRender();
+        });
+        $filterContainer->add($imageFilterInput);
 
         $hint->setText($hintText(count($view->rows('all'))));
     }
@@ -91,12 +103,13 @@ final class ViewUserReportPage extends AbstractViewReportPage
     /**
      * @return list<array{value: string, label: string}>
      */
-    private function filterRows(string $userPrefix, string $tagPrefix, UserReportView $view): array
+    private function filterRows(string $userPrefix, string $tagPrefix, string $imagePrefix, UserReportView $view): array
     {
         $userPrefix = strtolower($userPrefix);
         $tagPrefix = strtolower($tagPrefix);
+        $imagePrefix = strtolower($imagePrefix);
 
-        if ('' === $userPrefix && '' === $tagPrefix) {
+        if ('' === $userPrefix && '' === $tagPrefix && '' === $imagePrefix) {
             return $view->rows('all');
         }
 
@@ -104,7 +117,8 @@ final class ViewUserReportPage extends AbstractViewReportPage
         $filtered = array_values(array_filter(
             $this->report->rows,
             static fn (UserReportRow $r) => ('' === $userPrefix || str_starts_with(strtolower($r->username), $userPrefix))
-                && ('' === $tagPrefix || str_starts_with(strtolower($r->tag), $tagPrefix)),
+                && ('' === $tagPrefix || str_starts_with(strtolower($r->tag), $tagPrefix))
+                && ('' === $imagePrefix || str_starts_with(strtolower($r->image), $imagePrefix)),
         ));
 
         return array_map($view->formatRow(...), $filtered);
