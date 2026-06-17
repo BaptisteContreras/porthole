@@ -60,15 +60,30 @@ final class ViewUserReportPage extends AbstractViewReportPage
         $dataList = $buildDataList($view->rows('all'));
         $dataContainer->add($dataList);
 
+        $userFilter = '';
+        $tagFilter = '';
+
         $filterInput = new InputWidget();
         $filterInput->setPrompt('Filter user: > ');
-        $filterInput->onChange(function (ChangeEvent $event) use ($dataList, $hint, $navigator, $hintText, $view): void {
-            $items = $this->filterUserRows($event->getValue(), $view);
+        $filterInput->onChange(function (ChangeEvent $event) use ($dataList, $hint, $navigator, $hintText, $view, &$userFilter, &$tagFilter): void {
+            $userFilter = $event->getValue();
+            $items = $this->filterRows($userFilter, $tagFilter, $view);
             $dataList->setItems($items);
             $hint->setText($hintText(count($items)));
             $navigator->requestPageRender();
         });
         $filterContainer->add($filterInput);
+
+        $tagFilterInput = new InputWidget();
+        $tagFilterInput->setPrompt('Filter tag: > ');
+        $tagFilterInput->onChange(function (ChangeEvent $event) use ($dataList, $hint, $navigator, $hintText, $view, &$userFilter, &$tagFilter): void {
+            $tagFilter = $event->getValue();
+            $items = $this->filterRows($userFilter, $tagFilter, $view);
+            $dataList->setItems($items);
+            $hint->setText($hintText(count($items)));
+            $navigator->requestPageRender();
+        });
+        $filterContainer->add($tagFilterInput);
 
         $hint->setText($hintText(count($view->rows('all'))));
     }
@@ -76,16 +91,20 @@ final class ViewUserReportPage extends AbstractViewReportPage
     /**
      * @return list<array{value: string, label: string}>
      */
-    private function filterUserRows(string $prefix, UserReportView $view): array
+    private function filterRows(string $userPrefix, string $tagPrefix, UserReportView $view): array
     {
-        $prefix = strtolower($prefix);
-        if ('' === $prefix) {
+        $userPrefix = strtolower($userPrefix);
+        $tagPrefix = strtolower($tagPrefix);
+
+        if ('' === $userPrefix && '' === $tagPrefix) {
             return $view->rows('all');
         }
+
         // prefix-only match by design: substring search would make bob_alice match 'alice'
         $filtered = array_values(array_filter(
             $this->report->rows,
-            static fn (UserReportRow $r) => str_starts_with(strtolower($r->username), $prefix),
+            static fn (UserReportRow $r) => ('' === $userPrefix || str_starts_with(strtolower($r->username), $userPrefix))
+                && ('' === $tagPrefix || str_starts_with(strtolower($r->tag), $tagPrefix)),
         ));
 
         return array_map($view->formatRow(...), $filtered);
