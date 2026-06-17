@@ -56,6 +56,7 @@ report:
 	set -a && . ./.test.local && set +a && \
 	docker run -it --rm -v $(CURDIR):/app \
 	  --add-host harbor.local:host-gateway \
+	  -e HARBOR_URL \
 	  -e HARBOR_TOKEN \
 	  -e HARBOR_USERNAME \
 	  porthole-dev bin/porthole
