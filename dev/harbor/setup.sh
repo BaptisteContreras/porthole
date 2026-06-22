@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HARBOR_VERSION="v2.12.0"
+HARBOR_VERSION="v2.15.0"
 HARBOR_TARBALL="harbor-online-installer-${HARBOR_VERSION}.tgz"
 HARBOR_URL="https://github.com/goharbor/harbor/releases/download/${HARBOR_VERSION}/${HARBOR_TARBALL}"
 
@@ -131,7 +131,7 @@ log:
     rotate_size: 200M
     location: /var/log/harbor
 
-_version: 2.12.0
+_version: 2.15.0
 
 upload_purging:
   enabled: true
@@ -145,7 +145,7 @@ cache:
 HARBOREOF
 
 # --- Run Harbor's prepare script ---
-# prepare pulls goharbor/prepare:v2.12.0 and generates common/config/ from templates.
+# prepare pulls goharbor/prepare:${HARBOR_VERSION} and generates common/config/ from templates.
 echo "Running Harbor prepare script (pulls goharbor/prepare:${HARBOR_VERSION})..."
 ./prepare
 

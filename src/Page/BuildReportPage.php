@@ -176,6 +176,7 @@ final class BuildReportPage implements PageInterface
                     to: $to,
                     outputPath: $outputPath,
                     verifySsl: $this->context->verifySsl,
+                    auditLogEndpoint: $this->context->auditLogEndpointStrategy->getKey(),
                 );
 
                 $phase = 'running';
@@ -308,6 +309,7 @@ final class BuildReportPage implements PageInterface
             'to' => $command->to?->format('Y-m-d'),
             'outputPath' => $command->outputPath,
             'verifySsl' => $command->verifySsl,
+            'auditLogEndpoint' => $command->auditLogEndpoint,
         ]);
 
         // Show connecting spinner immediately — before first page_fetched arrives

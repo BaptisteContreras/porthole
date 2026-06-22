@@ -203,5 +203,46 @@ final class GenerateReportWorkerCommandTest extends TestCase
         self::assertNull($capturedCommand->to);
         self::assertSame('', $capturedCommand->outputPath);
         self::assertTrue($capturedCommand->verifySsl);
+        self::assertSame('extended', $capturedCommand->auditLogEndpoint);
+    }
+
+    public function testDefaultsAuditLogEndpointToExtendedWhenNotInPayload(): void
+    {
+        $capturedCommand = null;
+        $this->mockHandler
+            ->method('handle')
+            ->willReturnCallback(
+                function (GenerateReportCommand $cmd) use (&$capturedCommand): void {
+                    $capturedCommand = $cmd;
+                }
+            );
+
+        $this->writePayload($this->defaultPayload()); // no auditLogEndpoint key
+
+        $tester = new CommandTester($this->command);
+        $tester->execute([]);
+
+        self::assertInstanceOf(GenerateReportCommand::class, $capturedCommand);
+        self::assertSame('extended', $capturedCommand->auditLogEndpoint);
+    }
+
+    public function testPassesAuditLogEndpointFromPayload(): void
+    {
+        $capturedCommand = null;
+        $this->mockHandler
+            ->method('handle')
+            ->willReturnCallback(
+                function (GenerateReportCommand $cmd) use (&$capturedCommand): void {
+                    $capturedCommand = $cmd;
+                }
+            );
+
+        $this->writePayload(array_merge($this->defaultPayload(), ['auditLogEndpoint' => 'legacy']));
+
+        $tester = new CommandTester($this->command);
+        $tester->execute([]);
+
+        self::assertInstanceOf(GenerateReportCommand::class, $capturedCommand);
+        self::assertSame('legacy', $capturedCommand->auditLogEndpoint);
     }
 }

@@ -6,8 +6,11 @@ use Porthole\Event\AuditLogPageFetchedEvent;
 use Porthole\Event\AuditLogsFetchedEvent;
 use Porthole\Event\CsvWrittenEvent;
 use Porthole\Event\ReportBuiltEvent;
+use Porthole\Harbor\AuditLogEndpointStrategyInterface;
+use Porthole\Harbor\ExtendedAuditLogEndpointStrategy;
 use Porthole\Harbor\HarborApiClient;
 use Porthole\Harbor\HarborContext;
+use Porthole\Harbor\LegacyAuditLogEndpointStrategy;
 use Porthole\Report\ImageReport;
 use Porthole\Report\ImageReportRow;
 use Porthole\Report\ReportBuilder;
@@ -34,6 +37,7 @@ final class GenerateReportHandler implements GenerateReportHandlerInterface
             token: $command->token,
             username: $command->username,
             verifySsl: $command->verifySsl,
+            auditLogEndpointStrategy: self::resolveStrategy($command->auditLogEndpoint),
         );
 
         $allEntries = [];
@@ -48,6 +52,14 @@ final class GenerateReportHandler implements GenerateReportHandlerInterface
 
         $rowCount = $this->csvWriter->write($command->outputPath, $command->mode, $report->rows);
         $dispatcher->dispatch(new CsvWrittenEvent($command->outputPath, $rowCount));
+    }
+
+    private static function resolveStrategy(string $key): AuditLogEndpointStrategyInterface
+    {
+        return match ($key) {
+            'legacy' => new LegacyAuditLogEndpointStrategy(),
+            default => new ExtendedAuditLogEndpointStrategy(),
+        };
     }
 
     /**

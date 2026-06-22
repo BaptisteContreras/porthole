@@ -2,7 +2,9 @@
 
 namespace Porthole\Page;
 
+use Porthole\Harbor\ExtendedAuditLogEndpointStrategy;
 use Porthole\Harbor\HarborContext;
+use Porthole\Harbor\LegacyAuditLogEndpointStrategy;
 use Porthole\Result\CsvReader;
 use Porthole\Tui\Navigator;
 use Porthole\Tui\PageInterface;
@@ -55,6 +57,18 @@ final class CredentialsPage implements PageInterface
             $sslWidget->setSelectedIndex(1);
         }
 
+        $endpointWidget = new SelectListWidget(
+            items: [
+                ['value' => 'extended', 'label' => 'Extended (recommended)', 'description' => 'Harbor 2.13+ — /api/v2.0/auditlog-exts'],
+                ['value' => 'legacy', 'label' => 'Legacy', 'description' => 'Harbor 2.12 and older — /api/v2.0/audit-logs'],
+            ],
+            maxVisible: 2,
+        );
+
+        if (null !== $this->context && 'legacy' === $this->context->auditLogEndpointStrategy->getKey()) {
+            $endpointWidget->setSelectedIndex(1);
+        }
+
         $tokenValue = $tokenInput->getValue();
         $maskWidget = new TextWidget('' !== $tokenValue ? str_repeat('●', mb_strlen($tokenValue)) : '(empty)');
         $maskWidget->addStyleClass('input');
@@ -77,6 +91,8 @@ final class CredentialsPage implements PageInterface
         $container->add($usernameInput);
         $container->add(new TextWidget('Verify SSL'));
         $container->add($sslWidget);
+        $container->add(new TextWidget('Audit log endpoint'));
+        $container->add($endpointWidget);
         $container->add($hint);
 
         $keybindings = new Keybindings([
@@ -97,6 +113,7 @@ final class CredentialsPage implements PageInterface
             $maskWidget,
             $usernameInput,
             $sslWidget,
+            $endpointWidget,
             &$tokenVisible,
         ): void {
             $data = $event->getData();
@@ -143,12 +160,18 @@ final class CredentialsPage implements PageInterface
                 $sslItem = $sslWidget->getSelectedItem();
                 $username = '' !== $usernameInput->getValue() ? $usernameInput->getValue() : null;
 
+                $endpointItem = $endpointWidget->getSelectedItem();
+                $strategy = ('legacy' === ($endpointItem['value'] ?? null))
+                    ? new LegacyAuditLogEndpointStrategy()
+                    : new ExtendedAuditLogEndpointStrategy();
+
                 $navigator->navigateTo(new HomePage(
                     new HarborContext(
                         url: $url,
                         token: $token,
                         username: $username,
                         verifySsl: null === $sslItem || 'yes' === $sslItem['value'],
+                        auditLogEndpointStrategy: $strategy,
                     ),
                     $this->handler,
                     $this->reader,

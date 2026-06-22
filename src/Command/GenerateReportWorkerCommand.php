@@ -124,6 +124,7 @@ final class GenerateReportWorkerCommand extends Command
             to: $to,
             outputPath: self::stringField($data, 'outputPath'),
             verifySsl: $verifySsl,
+            auditLogEndpoint: self::stringField($data, 'auditLogEndpoint', 'extended'),
         );
     }
 

@@ -1,6 +1,6 @@
 services:
   registry:
-    image: goharbor/registry-photon:v2.12.0
+    image: goharbor/registry-photon:v2.15.0
     container_name: harbor-registry
     restart: always
     user: "0:0"
@@ -14,7 +14,7 @@ services:
       - harbor
 
   registryctl:
-    image: goharbor/harbor-registryctl:v2.12.0
+    image: goharbor/harbor-registryctl:v2.15.0
     container_name: harbor-registryctl
     restart: always
     user: "0:0"
@@ -36,7 +36,7 @@ services:
       - harbor
 
   postgresql:
-    image: goharbor/harbor-db:v2.12.0
+    image: goharbor/harbor-db:v2.15.0
     container_name: harbor-db
     restart: always
     env_file:
@@ -49,7 +49,7 @@ services:
       - harbor
 
   redis:
-    image: goharbor/redis-photon:v2.12.0
+    image: goharbor/redis-photon:v2.15.0
     container_name: harbor-redis
     restart: always
     volumes:
@@ -60,7 +60,7 @@ services:
           - redis
 
   core:
-    image: goharbor/harbor-core:v2.12.0
+    image: goharbor/harbor-core:v2.15.0
     container_name: harbor-core
     restart: always
     healthcheck:
@@ -110,7 +110,7 @@ services:
       - postgresql
 
   portal:
-    image: goharbor/harbor-portal:v2.12.0
+    image: goharbor/harbor-portal:v2.15.0
     container_name: harbor-portal
     restart: always
     volumes:
@@ -121,7 +121,7 @@ services:
       - harbor
 
   jobservice:
-    image: goharbor/harbor-jobservice:v2.12.0
+    image: goharbor/harbor-jobservice:v2.15.0
     container_name: harbor-jobservice
     restart: always
     env_file:
@@ -145,7 +145,7 @@ services:
       - core
 
   proxy:
-    image: goharbor/nginx-photon:v2.12.0
+    image: goharbor/nginx-photon:v2.15.0
     container_name: harbor-proxy
     restart: always
     volumes:

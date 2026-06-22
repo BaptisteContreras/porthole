@@ -9,6 +9,7 @@ final class HarborContext
         public readonly string $token,
         public readonly ?string $username,
         public readonly bool $verifySsl,
+        public readonly AuditLogEndpointStrategyInterface $auditLogEndpointStrategy = new ExtendedAuditLogEndpointStrategy(),
     ) {
     }
 }

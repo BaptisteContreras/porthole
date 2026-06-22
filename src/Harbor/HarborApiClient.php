@@ -44,7 +44,7 @@ final class HarborApiClient
             $query['q'] = $filterQuery;
         }
 
-        $url = sprintf('%s/api/v2.0/audit-logs', $context->url);
+        $url = $context->auditLogEndpointStrategy->buildUrl($context->url);
 
         do {
             $response = $httpClient->request('GET', $url, [

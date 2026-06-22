@@ -143,6 +143,76 @@ class GenerateReportHandlerTest extends TestCase
         ], $pageEvents);
     }
 
+    public function testUsesExtendedEndpointByDefault(): void
+    {
+        $capturedUrl = null;
+        $httpClient = new MockHttpClient(
+            function (string $method, string $url) use (&$capturedUrl) {
+                $capturedUrl = $url;
+
+                return new MockResponse('[]');
+            }
+        );
+
+        $handler = new GenerateReportHandler(
+            new HarborApiClient($httpClient),
+            new ReportBuilder(),
+            $this->makeWriter(),
+        );
+
+        $command = new GenerateReportCommand(
+            harborUrl: 'https://registry.example.com',
+            token: 'test-token',
+            username: null,
+            mode: 'images',
+            from: null,
+            to: null,
+            outputPath: $this->outputFile,
+            verifySsl: true,
+            // auditLogEndpoint intentionally omitted — defaults to 'extended'
+        );
+
+        $handler->handle($command, new EventDispatcher());
+
+        $this->assertIsString($capturedUrl);
+        $this->assertStringContainsString('/api/v2.0/auditlog-exts', $capturedUrl);
+    }
+
+    public function testUsesLegacyEndpointWhenCommandSpecifiesLegacy(): void
+    {
+        $capturedUrl = null;
+        $httpClient = new MockHttpClient(
+            function (string $method, string $url) use (&$capturedUrl) {
+                $capturedUrl = $url;
+
+                return new MockResponse('[]');
+            }
+        );
+
+        $handler = new GenerateReportHandler(
+            new HarborApiClient($httpClient),
+            new ReportBuilder(),
+            $this->makeWriter(),
+        );
+
+        $command = new GenerateReportCommand(
+            harborUrl: 'https://registry.example.com',
+            token: 'test-token',
+            username: null,
+            mode: 'images',
+            from: null,
+            to: null,
+            outputPath: $this->outputFile,
+            verifySsl: true,
+            auditLogEndpoint: 'legacy',
+        );
+
+        $handler->handle($command, new EventDispatcher());
+
+        $this->assertIsString($capturedUrl);
+        $this->assertStringContainsString('/api/v2.0/audit-logs', $capturedUrl);
+    }
+
     private function makeWriter(): CsvWriter
     {
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());

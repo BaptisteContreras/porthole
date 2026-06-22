@@ -13,6 +13,7 @@ final class GenerateReportCommand
         public readonly ?\DateTimeImmutable $to,
         public readonly string $outputPath,
         public readonly bool $verifySsl,
+        public readonly string $auditLogEndpoint = 'extended',
     ) {
     }
 }

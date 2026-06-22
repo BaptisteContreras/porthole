@@ -5,6 +5,7 @@ namespace Porthole\Tests\Harbor;
 use PHPUnit\Framework\TestCase;
 use Porthole\Harbor\HarborApiClient;
 use Porthole\Harbor\HarborContext;
+use Porthole\Harbor\LegacyAuditLogEndpointStrategy;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
@@ -118,6 +119,48 @@ class HarborApiClientTest extends TestCase
         $this->assertIsString($capturedUrl);
         $this->assertStringContainsString('[~', $capturedUrl);
         $this->assertStringContainsString('2025-06-30T23:59:59.000Z', $capturedUrl);
+    }
+
+    public function testUsesExtendedEndpointUrlByDefault(): void
+    {
+        $capturedUrl = null;
+        $httpClient = new MockHttpClient(function (string $method, string $url) use (&$capturedUrl) {
+            $capturedUrl = $url;
+
+            return new MockResponse('[]');
+        });
+
+        $client = new HarborApiClient($httpClient);
+        foreach ($client->streamAuditLogs($this->context) as $_) {
+        }
+
+        $this->assertIsString($capturedUrl);
+        $this->assertStringContainsString('/api/v2.0/auditlog-exts', $capturedUrl);
+    }
+
+    public function testUsesLegacyEndpointUrlWhenConfigured(): void
+    {
+        $context = new HarborContext(
+            url: 'https://registry.example.com',
+            token: 'my-token',
+            username: null,
+            verifySsl: true,
+            auditLogEndpointStrategy: new LegacyAuditLogEndpointStrategy(),
+        );
+
+        $capturedUrl = null;
+        $httpClient = new MockHttpClient(function (string $method, string $url) use (&$capturedUrl) {
+            $capturedUrl = $url;
+
+            return new MockResponse('[]');
+        });
+
+        $client = new HarborApiClient($httpClient);
+        foreach ($client->streamAuditLogs($context) as $_) {
+        }
+
+        $this->assertIsString($capturedUrl);
+        $this->assertStringContainsString('/api/v2.0/audit-logs', $capturedUrl);
     }
 
     public function testYieldsOneBasedPageNumberAsKey(): void
