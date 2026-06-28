@@ -40,14 +40,17 @@ final class GenerateReportHandler implements GenerateReportHandlerInterface
             auditLogEndpointStrategy: self::resolveStrategy($command->auditLogEndpoint),
         );
 
-        $allEntries = [];
-        foreach ($this->client->streamAuditLogs($context, $command->from, $command->to) as $page => $pageEntries) {
-            array_push($allEntries, ...$pageEntries);
-            $dispatcher->dispatch(new AuditLogPageFetchedEvent($page, count($allEntries)));
-        }
-        $dispatcher->dispatch(new AuditLogsFetchedEvent(count($allEntries)));
+        $totalEntries = 0;
+        $stream = (function () use ($context, $command, $dispatcher, &$totalEntries): \Generator {
+            foreach ($this->client->streamAuditLogs($context, $command->from, $command->to) as $page => $pageEntries) {
+                $totalEntries += count($pageEntries);
+                $dispatcher->dispatch(new AuditLogPageFetchedEvent($page, $totalEntries));
+                yield from $pageEntries;
+            }
+        })();
 
-        $report = $this->buildReport($allEntries, $command->mode);
+        $report = $this->buildReport($stream, $command->mode);
+        $dispatcher->dispatch(new AuditLogsFetchedEvent($totalEntries));
         $dispatcher->dispatch(new ReportBuiltEvent(count($report->rows)));
 
         $rowCount = $this->csvWriter->write($command->outputPath, $command->mode, $report->rows);
@@ -63,9 +66,9 @@ final class GenerateReportHandler implements GenerateReportHandlerInterface
     }
 
     /**
-     * @param \Porthole\Harbor\AuditLogEntry[] $entries
+     * @param iterable<\Porthole\Harbor\AuditLogEntry> $entries
      */
-    private function buildReport(array $entries, string $mode): ImageReport|UserReport
+    private function buildReport(iterable $entries, string $mode): ImageReport|UserReport
     {
         if ('users' === $mode) {
             $report = $this->reportBuilder->buildUsersReport($entries);

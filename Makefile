@@ -1,7 +1,7 @@
 DOCKER_RUN := docker run --rm -v $(CURDIR):/app porthole-dev
 
 
-.PHONY: build harbor-setup harbor-up harbor-down install test cs stan check submodule-init submodule-update report
+.PHONY: build harbor-setup harbor-up harbor-down harbor-seed harbor-bulk-seed install test cs stan check submodule-init submodule-update report
 
 ## Build the porthole-dev Docker image
 build:
@@ -22,6 +22,13 @@ harbor-down:
 ## Seed Harbor with test projects, images, and pull events (requires harbor-up)
 harbor-seed:
 	bash dev/seed-harbor.sh
+
+## Bulk-pull existing Harbor images until audit log reaches TARGET_LOGS (default 200000)
+## Usage: make harbor-bulk-seed or make harbor-bulk-seed TARGET_LOGS=500000
+TARGET_LOGS ?= 200000
+PARALLEL    ?= 50
+harbor-bulk-seed:
+	bash dev/bulk-pull.sh $(TARGET_LOGS) $(PARALLEL)
 
 ## Fetch the submodule after a fresh clone
 submodule-init:

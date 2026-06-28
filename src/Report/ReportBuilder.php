@@ -12,9 +12,9 @@ final class ReportBuilder
     private const int USERNAME_IMAGE_TAG_SPLIT_LIMIT = 3;
 
     /**
-     * @param array<AuditLogEntry> $entries
+     * @param iterable<AuditLogEntry> $entries
      */
-    public function buildImagesReport(array $entries): ImageReport
+    public function buildImagesReport(iterable $entries): ImageReport
     {
         $counts = [];
 
@@ -44,9 +44,9 @@ final class ReportBuilder
     }
 
     /**
-     * @param array<AuditLogEntry> $entries
+     * @param iterable<AuditLogEntry> $entries
      */
-    public function buildUsersReport(array $entries): UserReport
+    public function buildUsersReport(iterable $entries): UserReport
     {
         $counts = [];
 

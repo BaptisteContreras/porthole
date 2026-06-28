@@ -31,7 +31,7 @@ API="${HARBOR_URL}/api/v2.0"
 # Ensure harbor.local resolves to 127.0.0.1
 # ---------------------------------------------------------------------------
 
-if ! grep -q "${HARBOR_HOST}" /etc/hosts 2>/dev/null; then
+if ! grep -q "${HARBOR_HOST}" /etc/hosts 2>/dev/null && ! getent hosts "${HARBOR_HOST}" > /dev/null 2>&1; then
     echo "Adding ${HARBOR_HOST} -> 127.0.0.1 to /etc/hosts (requires sudo)..."
     echo "127.0.0.1 ${HARBOR_HOST}" | sudo tee -a /etc/hosts > /dev/null
     echo "  Done."
